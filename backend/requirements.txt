@@ -11,29 +11,18 @@ requests>=2.31.0
 python-multipart>=0.0.6
 gunicorn>=21.0.0
 
-# File processing and magic number detection (ADDED FOR DOCUMENTS ROUTE)
-python-magic>=0.4.27        # ← THIS LINE FIXES THE MAGIC MODULE ERROR
-filetype>=1.2.0             # ← THIS LINE ADDS EXTRA FILE TYPE SUPPORT
-
-# Data processing - specific versions for CrewAI compatibility
+# Data processing - pin numpy for CrewAI compatibility
 numpy==1.24.3
 pandas>=2.0.0,<3.0.0
 openpyxl>=3.1.0
 PyPDF2>=3.0.0
 
 # AI/ML packages - use specific compatible versions
-crewai==0.28.8
-crewai-tools==0.1.6
-langchain==0.2.16
-langchain-openai==0.1.25
-openai==1.35.5
-
-# Fix pydantic version conflicts
-pydantic>=2.0.0,<3.0.0
-pydantic-core>=2.0.0
+crewai>=0.28.0,<0.30.0
+crewai-tools>=0.1.0,<0.2.0
+langchain>=0.1.0,<0.3.0
+langchain-openai>=0.1.0,<0.2.0
+openai>=1.30.0,<1.40.0
 
 # Database
 psycopg>=3.1.0,<4.0.0
-
-# Password hashing
-bcrypt>=4.0.0
