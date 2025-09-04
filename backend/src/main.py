@@ -23,19 +23,26 @@ from src.routes.conversations import conversations_bp
 from src.routes.sage_operations import sage_operations_bp
 from src.routes.sage_auth import sage_auth_bp
 from src.routes.sage_api import sage_api_bp
-from src.routes.test import test_bp
 from src.routes.documents import documents_bp
 from src.routes.accounting_data import accounting_data_bp
 
-# Try to import AI agent, with fallback if dependencies fail
+# Try to import AI agent and test routes, with fallback if dependencies fail
 ai_agent_available = False
+test_routes_available = False
+
 try:
     from src.routes.ai_agent import ai_agent_bp
     ai_agent_available = True
     print("✅ AI Agent routes loaded successfully")
 except ImportError as e:
     print(f"⚠️ AI Agent routes not available: {e}")
-    print("The app will run without AI features")
+
+try:
+    from src.routes.test import test_bp
+    test_routes_available = True
+    print("✅ Test routes loaded successfully")
+except ImportError as e:
+    print(f"⚠️ Test routes not available (CrewAI dependency issue): {e}")
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 
@@ -95,15 +102,18 @@ app.register_blueprint(conversations_bp, url_prefix='/api')
 app.register_blueprint(sage_operations_bp, url_prefix='/api')
 app.register_blueprint(sage_auth_bp, url_prefix='/api')
 app.register_blueprint(sage_api_bp, url_prefix='/api')
+app.register_blueprint(documents_bp, url_prefix='/api')
+app.register_blueprint(accounting_data_bp, url_prefix='/api')
 
 # Register AI agent blueprint if available
 if ai_agent_available:
     app.register_blueprint(ai_agent_bp, url_prefix='/api')
     print("🤖 AI Agent routes registered successfully")
 
-app.register_blueprint(test_bp, url_prefix='/api')
-app.register_blueprint(documents_bp, url_prefix='/api')
-app.register_blueprint(accounting_data_bp, url_prefix='/api')
+# Register test blueprint if available
+if test_routes_available:
+    app.register_blueprint(test_bp, url_prefix='/api')
+    print("🧪 Test routes registered successfully")
 
 # Création des tables de base de données
 try:
@@ -147,7 +157,12 @@ def health_check():
     if ai_agent_available:
         features.append('AI Agent with CrewAI ✅')
     else:
-        features.append('AI Agent (unavailable - check dependencies)')
+        features.append('AI Agent (unavailable - dependency issues)')
+        
+    if test_routes_available:
+        features.append('Test Routes ✅')
+    else:
+        features.append('Test Routes (unavailable - dependency issues)')
     
     return {
         'status': 'healthy',
@@ -156,6 +171,7 @@ def health_check():
         'environment': 'production' if os.environ.get('RAILWAY_ENVIRONMENT') else 'development',
         'database_status': db_status,
         'ai_agent_status': 'available' if ai_agent_available else 'unavailable',
+        'test_routes_status': 'available' if test_routes_available else 'unavailable',
         'features': features
     }, 200
 
@@ -175,11 +191,15 @@ def api_root():
     if ai_agent_available:
         endpoints['ai_agent'] = '/api/ai-agent/*'
     
+    if test_routes_available:
+        endpoints['test'] = '/api/test/*'
+    
     return {
         'message': 'Sage AI Comptable API',
         'version': '1.0.0',
         'status': 'running',
         'ai_agent_status': 'available' if ai_agent_available else 'unavailable',
+        'test_routes_status': 'available' if test_routes_available else 'unavailable',
         'endpoints': endpoints
     }
 
@@ -224,5 +244,6 @@ if __name__ == '__main__':
     print(f"🔧 Debug mode: {debug}")
     print(f"🌍 Environment: {'production' if os.getenv('RAILWAY_ENVIRONMENT') else 'development'}")
     print(f"🤖 AI Agent: {'✅ Available' if ai_agent_available else '❌ Unavailable'}")
+    print(f"🧪 Test Routes: {'✅ Available' if test_routes_available else '❌ Unavailable'}")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
