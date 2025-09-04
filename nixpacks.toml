@@ -3,16 +3,15 @@ nixPkgs = ["nodejs", "python3", "python3Packages.pip"]
 
 [phases.install]
 cmds = [
-  "cd frontend && npm ci",
-  "cd backend && pip install -r requirements.txt"
+    "cd frontend && npm install",
+    "cd backend && pip install -r requirements.txt"
 ]
 
 [phases.build]
 cmds = [
-  "cd frontend && npm run build",
-  "cd backend && echo 'Backend ready'"
+    "cd frontend && npm run build",
+    "cd backend && echo 'Backend ready'"
 ]
 
 [start]
 cmd = "cd backend && python src/main.py"
-
