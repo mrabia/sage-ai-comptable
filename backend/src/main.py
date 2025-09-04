@@ -237,6 +237,7 @@ if __name__ == '__main__':
     logger.info(f"🔧 Debug mode: {debug}")
     logger.info(f"🌍 Environment: {'production' if os.getenv('RAILWAY_ENVIRONMENT') else 'development'}")
     logger.info(f"🤖 AI Agent: {'✅ Available' if AI_ENABLED else '❌ Unavailable'}")
+    logger.info(f"🧪 Test Routes: {'✅ Available' if TEST_ROUTES_ENABLED else '❌ Unavailable'}")
     logger.info(f"🗄️ Database: SQLite")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
