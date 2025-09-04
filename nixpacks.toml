@@ -1,11 +1,12 @@
 [phases.setup]
-nixPkgs = ['nodejs', 'python311', 'python311Packages.pip', 'postgresql']
+nixPkgs = ['nodejs', 'python311', 'python311Packages.pip', 'python311Packages.virtualenv', 'postgresql']
 
 [phases.install]
 cmds = [
     'cd frontend && npm install --legacy-peer-deps',
-    'cd backend && pip install --upgrade pip setuptools wheel',
-    'cd backend && pip install -r requirements.txt --no-cache-dir'
+    'cd backend && python -m venv venv',
+    'cd backend && source venv/bin/activate && pip install --upgrade pip setuptools wheel',
+    'cd backend && source venv/bin/activate && pip install -r requirements.txt --no-cache-dir'
 ]
 
 [phases.build]
@@ -15,4 +16,4 @@ cmds = [
 ]
 
 [start]
-cmd = 'cd backend && python src/main.py'
+cmd = 'cd backend && source venv/bin/activate && python src/main.py'
