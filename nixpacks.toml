@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs", "python3", "python3Packages.pip", "postgresql"]
+nixPkgs = ["nodejs", "python3", "python3Packages.pip", "postgresql.dev", "libpq"]
 
 [phases.install]
 cmds = [
