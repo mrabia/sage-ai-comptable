@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies required for CrewAI and numpy
+# Install system dependencies required for CrewAI, numpy, and python-magic
 RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y \
     libc6-dev \
     libffi-dev \
     libssl-dev \
+    libmagic1 \
+    libmagic-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js

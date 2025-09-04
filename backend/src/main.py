@@ -23,12 +23,12 @@ from src.routes.conversations import conversations_bp
 from src.routes.sage_operations import sage_operations_bp
 from src.routes.sage_auth import sage_auth_bp
 from src.routes.sage_api import sage_api_bp
-from src.routes.documents import documents_bp
 from src.routes.accounting_data import accounting_data_bp
 
-# Try to import AI agent and test routes, with fallback if dependencies fail
+# Try to import AI agent, test routes, and documents routes with fallback if dependencies fail
 ai_agent_available = False
 test_routes_available = False
+documents_available = False
 
 try:
     from src.routes.ai_agent import ai_agent_bp
@@ -43,6 +43,13 @@ try:
     print("✅ Test routes loaded successfully")
 except ImportError as e:
     print(f"⚠️ Test routes not available (CrewAI dependency issue): {e}")
+
+try:
+    from src.routes.documents import documents_bp
+    documents_available = True
+    print("✅ Documents routes loaded successfully")
+except ImportError as e:
+    print(f"⚠️ Documents routes not available (python-magic dependency issue): {e}")
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 
@@ -102,7 +109,6 @@ app.register_blueprint(conversations_bp, url_prefix='/api')
 app.register_blueprint(sage_operations_bp, url_prefix='/api')
 app.register_blueprint(sage_auth_bp, url_prefix='/api')
 app.register_blueprint(sage_api_bp, url_prefix='/api')
-app.register_blueprint(documents_bp, url_prefix='/api')
 app.register_blueprint(accounting_data_bp, url_prefix='/api')
 
 # Register AI agent blueprint if available
@@ -114,6 +120,11 @@ if ai_agent_available:
 if test_routes_available:
     app.register_blueprint(test_bp, url_prefix='/api')
     print("🧪 Test routes registered successfully")
+
+# Register documents blueprint if available
+if documents_available:
+    app.register_blueprint(documents_bp, url_prefix='/api')
+    print("📄 Documents routes registered successfully")
 
 # Création des tables de base de données
 try:
@@ -149,7 +160,6 @@ def health_check():
     
     features = [
         'Sage Business Cloud Integration',
-        'Document Processing (PDF, Images, CSV, Excel)',
         'OCR and Invoice Extraction', 
         'Automated Data Import'
     ]
@@ -163,6 +173,11 @@ def health_check():
         features.append('Test Routes ✅')
     else:
         features.append('Test Routes (unavailable - dependency issues)')
+        
+    if documents_available:
+        features.append('Document Processing (PDF, Images, CSV, Excel) ✅')
+    else:
+        features.append('Document Processing (unavailable - python-magic dependency)')
     
     return {
         'status': 'healthy',
@@ -172,6 +187,7 @@ def health_check():
         'database_status': db_status,
         'ai_agent_status': 'available' if ai_agent_available else 'unavailable',
         'test_routes_status': 'available' if test_routes_available else 'unavailable',
+        'documents_status': 'available' if documents_available else 'unavailable',
         'features': features
     }, 200
 
@@ -184,7 +200,6 @@ def api_root():
         'users': '/api/user/*',
         'conversations': '/api/conversations/*',
         'sage': '/api/sage/*',
-        'documents': '/api/documents/*',
         'accounting': '/api/accounting-data/*'
     }
     
@@ -193,6 +208,9 @@ def api_root():
     
     if test_routes_available:
         endpoints['test'] = '/api/test/*'
+        
+    if documents_available:
+        endpoints['documents'] = '/api/documents/*'
     
     return {
         'message': 'Sage AI Comptable API',
@@ -200,6 +218,7 @@ def api_root():
         'status': 'running',
         'ai_agent_status': 'available' if ai_agent_available else 'unavailable',
         'test_routes_status': 'available' if test_routes_available else 'unavailable',
+        'documents_status': 'available' if documents_available else 'unavailable',
         'endpoints': endpoints
     }
 
@@ -216,6 +235,7 @@ def serve(path):
                 'message': 'Sage AI Comptable Backend',
                 'status': 'running',
                 'ai_agent_status': 'available' if ai_agent_available else 'unavailable',
+                'documents_status': 'available' if documents_available else 'unavailable',
                 'api_endpoint': '/api',
                 'health_check': '/api/health'
             })
@@ -233,6 +253,7 @@ def serve(path):
                 'message': 'Sage AI Comptable Backend',
                 'status': 'running',
                 'ai_agent_status': 'available' if ai_agent_available else 'unavailable',
+                'documents_status': 'available' if documents_available else 'unavailable',
                 'api_endpoint': '/api'
             })
 
@@ -245,5 +266,6 @@ if __name__ == '__main__':
     print(f"🌍 Environment: {'production' if os.getenv('RAILWAY_ENVIRONMENT') else 'development'}")
     print(f"🤖 AI Agent: {'✅ Available' if ai_agent_available else '❌ Unavailable'}")
     print(f"🧪 Test Routes: {'✅ Available' if test_routes_available else '❌ Unavailable'}")
+    print(f"📄 Documents: {'✅ Available' if documents_available else '❌ Unavailable'}")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
