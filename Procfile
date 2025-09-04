@@ -1,2 +1,1 @@
-web: cd backend && gunicorn --bind 0.0.0.0:$PORT src.main:app
-
+web: cd backend && source venv/bin/activate && gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 src.main:app
