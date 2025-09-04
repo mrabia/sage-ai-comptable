@@ -1,5 +1,10 @@
 import os
+import logging
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Charger les variables d'environnement selon l'environnement
 if os.getenv('RAILWAY_ENVIRONMENT'):
@@ -11,7 +16,7 @@ import sys
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from flask import Flask, send_from_directory, jsonify
+from flask import Flask, send_from_directory, Blueprint, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from src.models.user import db
@@ -23,33 +28,32 @@ from src.routes.conversations import conversations_bp
 from src.routes.sage_operations import sage_operations_bp
 from src.routes.sage_auth import sage_auth_bp
 from src.routes.sage_api import sage_api_bp
+from src.routes.test import test_bp
+from src.routes.documents import documents_bp
 from src.routes.accounting_data import accounting_data_bp
 
-# Try to import AI agent, test routes, and documents routes with fallback if dependencies fail
-ai_agent_available = False
-test_routes_available = False
-documents_available = False
-
+# Graceful AI loading
+AI_ENABLED = False
 try:
     from src.routes.ai_agent import ai_agent_bp
-    ai_agent_available = True
-    print("✅ AI Agent routes loaded successfully")
+    AI_ENABLED = True
+    logger.info("AI components loaded successfully")
 except ImportError as e:
-    print(f"⚠️ AI Agent routes not available: {e}")
-
-try:
-    from src.routes.test import test_bp
-    test_routes_available = True
-    print("✅ Test routes loaded successfully")
-except ImportError as e:
-    print(f"⚠️ Test routes not available (CrewAI dependency issue): {e}")
-
-try:
-    from src.routes.documents import documents_bp
-    documents_available = True
-    print("✅ Documents routes loaded successfully")
-except ImportError as e:
-    print(f"⚠️ Documents routes not available (python-magic dependency issue): {e}")
+    logger.warning(f"AI components failed to load: {e}")
+    logger.info("Application will run without AI functionality")
+    # Create a dummy blueprint for AI routes
+    ai_agent_bp = Blueprint('ai_agent_disabled', __name__)
+    
+    @ai_agent_bp.route('/agent/chat', methods=['POST'])
+    def ai_disabled():
+        return {'error': 'AI functionality is temporarily unavailable', 'ai_enabled': False}, 503
+        
+    @ai_agent_bp.route('/agent/status', methods=['GET'])
+    def ai_status():
+        return {'ai_enabled': False, 'message': 'AI components not available'}, 200
+except Exception as e:
+    logger.error(f"Unexpected error loading AI components: {e}")
+    AI_ENABLED = False
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 
@@ -85,19 +89,17 @@ CORS(app,
 # Configuration JWT
 jwt = JWTManager(app)
 
-# Configuration de la base de données - PostgreSQL for Railway, SQLite for local
-if os.environ.get('DATABASE_URL'):
-    # Railway PostgreSQL
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
-    print("🗄️ Using Railway PostgreSQL database")
-else:
-    # Local SQLite
-    database_dir = os.path.join(os.path.dirname(__file__), 'database')
-    os.makedirs(database_dir, exist_ok=True)
-    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(database_dir, 'app.db')}"
-    print("🗄️ Using local SQLite database")
-
+# Configuration de la base de données - SQLite uniquement
+database_dir = os.path.join(os.path.dirname(__file__), 'database')
+os.makedirs(database_dir, exist_ok=True)
+sqlite_path = os.path.join(database_dir, 'app.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{sqlite_path}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+if os.getenv('RAILWAY_ENVIRONMENT'):
+    logger.info("🗄️ Using SQLite database (Production on Railway)")
+else:
+    logger.info("🗄️ Using SQLite database (Local development)")
 
 # Initialisation de la base de données
 db.init_app(app)
@@ -109,30 +111,18 @@ app.register_blueprint(conversations_bp, url_prefix='/api')
 app.register_blueprint(sage_operations_bp, url_prefix='/api')
 app.register_blueprint(sage_auth_bp, url_prefix='/api')
 app.register_blueprint(sage_api_bp, url_prefix='/api')
+app.register_blueprint(ai_agent_bp, url_prefix='/api')
+app.register_blueprint(test_bp, url_prefix='/api')
+app.register_blueprint(documents_bp, url_prefix='/api')
 app.register_blueprint(accounting_data_bp, url_prefix='/api')
-
-# Register AI agent blueprint if available
-if ai_agent_available:
-    app.register_blueprint(ai_agent_bp, url_prefix='/api')
-    print("🤖 AI Agent routes registered successfully")
-
-# Register test blueprint if available
-if test_routes_available:
-    app.register_blueprint(test_bp, url_prefix='/api')
-    print("🧪 Test routes registered successfully")
-
-# Register documents blueprint if available
-if documents_available:
-    app.register_blueprint(documents_bp, url_prefix='/api')
-    print("📄 Documents routes registered successfully")
 
 # Création des tables de base de données
 try:
     with app.app_context():
         db.create_all()
-        print("✅ Database tables created successfully")
+        logger.info("✅ Database tables created successfully")
 except Exception as e:
-    print(f"❌ Database initialization error: {e}")
+    logger.error(f"❌ Database initialization error: {e}")
 
 # Gestionnaire d'erreur JWT
 @jwt.expired_token_loader
@@ -150,6 +140,16 @@ def missing_token_callback(error):
 # Route de santé pour vérifier que l'API fonctionne
 @app.route('/api/health', methods=['GET'])
 def health_check():
+    features = [
+        'Sage Business Cloud Integration',
+        'Document Processing (PDF, Images, CSV, Excel)',
+        'OCR and Invoice Extraction',
+        'Automated Data Import'
+    ]
+    
+    if AI_ENABLED:
+        features.append('AI Agent with CrewAI')
+    
     try:
         # Test database connection
         with app.app_context():
@@ -158,36 +158,14 @@ def health_check():
     except Exception as e:
         db_status = f"error: {str(e)}"
     
-    features = [
-        'Sage Business Cloud Integration',
-        'OCR and Invoice Extraction', 
-        'Automated Data Import'
-    ]
-    
-    if ai_agent_available:
-        features.append('AI Agent with CrewAI ✅')
-    else:
-        features.append('AI Agent (unavailable - dependency issues)')
-        
-    if test_routes_available:
-        features.append('Test Routes ✅')
-    else:
-        features.append('Test Routes (unavailable - dependency issues)')
-        
-    if documents_available:
-        features.append('Document Processing (PDF, Images, CSV, Excel) ✅')
-    else:
-        features.append('Document Processing (unavailable - python-magic dependency)')
-    
     return {
         'status': 'healthy',
         'message': 'API Sage AI Comptable opérationnelle',
         'version': '1.0.0',
-        'environment': 'production' if os.environ.get('RAILWAY_ENVIRONMENT') else 'development',
+        'environment': 'production' if os.getenv('RAILWAY_ENVIRONMENT') else 'development',
+        'ai_enabled': AI_ENABLED,
+        'database_type': 'SQLite',
         'database_status': db_status,
-        'ai_agent_status': 'available' if ai_agent_available else 'unavailable',
-        'test_routes_status': 'available' if test_routes_available else 'unavailable',
-        'documents_status': 'available' if documents_available else 'unavailable',
         'features': features
     }, 200
 
@@ -200,25 +178,19 @@ def api_root():
         'users': '/api/user/*',
         'conversations': '/api/conversations/*',
         'sage': '/api/sage/*',
+        'documents': '/api/documents/*',
         'accounting': '/api/accounting-data/*'
     }
     
-    if ai_agent_available:
+    if AI_ENABLED:
         endpoints['ai_agent'] = '/api/ai-agent/*'
-    
-    if test_routes_available:
-        endpoints['test'] = '/api/test/*'
-        
-    if documents_available:
-        endpoints['documents'] = '/api/documents/*'
     
     return {
         'message': 'Sage AI Comptable API',
         'version': '1.0.0',
         'status': 'running',
-        'ai_agent_status': 'available' if ai_agent_available else 'unavailable',
-        'test_routes_status': 'available' if test_routes_available else 'unavailable',
-        'documents_status': 'available' if documents_available else 'unavailable',
+        'ai_enabled': AI_ENABLED,
+        'database_type': 'SQLite',
         'endpoints': endpoints
     }
 
@@ -234,8 +206,8 @@ def serve(path):
             return jsonify({
                 'message': 'Sage AI Comptable Backend',
                 'status': 'running',
-                'ai_agent_status': 'available' if ai_agent_available else 'unavailable',
-                'documents_status': 'available' if documents_available else 'unavailable',
+                'ai_enabled': AI_ENABLED,
+                'database_type': 'SQLite',
                 'api_endpoint': '/api',
                 'health_check': '/api/health'
             })
@@ -252,8 +224,8 @@ def serve(path):
             return jsonify({
                 'message': 'Sage AI Comptable Backend',
                 'status': 'running',
-                'ai_agent_status': 'available' if ai_agent_available else 'unavailable',
-                'documents_status': 'available' if documents_available else 'unavailable',
+                'ai_enabled': AI_ENABLED,
+                'database_type': 'SQLite',
                 'api_endpoint': '/api'
             })
 
@@ -261,11 +233,10 @@ if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true' and not os.getenv('RAILWAY_ENVIRONMENT')
     
-    print(f"🚀 Starting Sage AI Comptable on port {port}")
-    print(f"🔧 Debug mode: {debug}")
-    print(f"🌍 Environment: {'production' if os.getenv('RAILWAY_ENVIRONMENT') else 'development'}")
-    print(f"🤖 AI Agent: {'✅ Available' if ai_agent_available else '❌ Unavailable'}")
-    print(f"🧪 Test Routes: {'✅ Available' if test_routes_available else '❌ Unavailable'}")
-    print(f"📄 Documents: {'✅ Available' if documents_available else '❌ Unavailable'}")
+    logger.info(f"🚀 Starting Sage AI Comptable on port {port}")
+    logger.info(f"🔧 Debug mode: {debug}")
+    logger.info(f"🌍 Environment: {'production' if os.getenv('RAILWAY_ENVIRONMENT') else 'development'}")
+    logger.info(f"🤖 AI Agent: {'✅ Available' if AI_ENABLED else '❌ Unavailable'}")
+    logger.info(f"🗄️ Database: SQLite")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
