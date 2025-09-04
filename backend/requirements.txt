@@ -1,19 +1,29 @@
-flask==2.3.3
-flask-cors==4.0.0
-flask-sqlalchemy==3.0.5
-flask-migrate==4.0.5
-flask-jwt-extended==4.5.3
-python-dotenv==1.0.0
-requests==2.31.0
-crewai==0.28.8
-crewai-tools==0.1.6
-langchain==0.2.16
-langchain-openai==0.1.25
-openai==1.35.5
-pandas==2.0.3
-openpyxl==3.1.2
-PyPDF2==3.0.1
-python-multipart==0.0.6
-gunicorn==21.2.0
-# psycopg2-binary==2.9.7
-psycopg==3.1.10
+# Core Flask packages
+flask>=2.3.0,<3.0.0
+flask-cors>=4.0.0
+flask-sqlalchemy>=3.0.0,<4.0.0
+flask-migrate>=4.0.0
+flask-jwt-extended>=4.5.0
+python-dotenv>=1.0.0
+
+# HTTP and utilities
+requests>=2.31.0
+python-multipart>=0.0.6
+
+# AI/ML packages - using compatible versions
+crewai>=0.28.0,<0.30.0
+crewai-tools>=0.1.0,<0.2.0
+langchain>=0.1.0,<0.3.0
+langchain-openai>=0.1.0,<0.2.0
+openai>=1.30.0,<1.40.0
+
+# Data processing
+pandas>=2.0.0,<3.0.0
+openpyxl>=3.1.0
+PyPDF2>=3.0.0
+
+# Database
+psycopg>=3.1.0,<4.0.0
+
+# Production server
+gunicorn>=21.0.0
