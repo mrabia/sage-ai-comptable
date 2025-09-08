@@ -34,20 +34,30 @@ from src.routes.accounting_data import accounting_data_bp
 
 # Graceful AI loading
 AI_ENABLED = False
-try:
-    from src.routes.ai_agent import ai_agent_bp
-    # Test if AI agent actually works
-    from src.agents.sage_agent import SageAgentManager
-    test_agent = SageAgentManager()
-    # Test with a simple request - if this fails, AI is not available
-    test_response = test_agent.get_agent_capabilities()
-    if test_response and len(test_response) > 0:
-        AI_ENABLED = True
-        logger.info("AI components loaded and tested successfully")
-    else:
-        raise Exception("AI agent capabilities test failed")
-except Exception as e:
-    logger.warning(f"AI components failed to load or test: {e}")
+
+# Check if OpenAI API key is configured
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+if not OPENAI_API_KEY or OPENAI_API_KEY.strip() == '' or 'your_openai_api_key' in OPENAI_API_KEY.lower():
+    logger.warning("OpenAI API key not configured - using fallback mode")
+    AI_ENABLED = False
+else:
+    try:
+        from src.routes.ai_agent import ai_agent_bp
+        # Test if AI agent actually works
+        from src.agents.sage_agent import SageAgentManager
+        test_agent = SageAgentManager()
+        # Test with a simple request - if this fails, AI is not available
+        test_response = test_agent.get_agent_capabilities()
+        if test_response and len(test_response) > 0:
+            AI_ENABLED = True
+            logger.info("AI components loaded and tested successfully")
+        else:
+            raise Exception("AI agent capabilities test failed")
+    except Exception as e:
+        logger.warning(f"AI components failed to load or test: {e}")
+        AI_ENABLED = False
+
+if not AI_ENABLED:
     logger.info("Application will run without AI functionality")
     # Create a dummy blueprint for AI routes
     ai_agent_bp = Blueprint('ai_agent_disabled', __name__)
