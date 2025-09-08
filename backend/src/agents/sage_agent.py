@@ -2,8 +2,11 @@ import os
 import httpx
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage
+from langchain.agents import AgentExecutor, create_openai_functions_agent
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from utils.tool_converter import convert_crewai_tools_to_langchain
 
-print("✅ Modern LangChain stack imported successfully")
+print("✅ Modern LangChain stack with AgentExecutor imported successfully")
 
 from src.tools.sage_tools import SAGE_TOOLS
 from src.tools.document_tools import (
@@ -67,13 +70,112 @@ class SageAgentManager:
             DocumentValidationTool()
         ]
         
-        # Configurer les prompts système pour différents types d'agents (sans CrewAI)
+        # Configurer les agents LangChain avec outils (Option A moderne)
         if self.agents_available:
-            self.system_prompts = self._create_system_prompts()
-            print("✅ AI system prompts configured successfully")
+            self.langchain_tools = self._convert_tools_to_langchain()
+            self.agents = self._create_langchain_agents()
+            print("✅ Modern LangChain agents with tools configured successfully")
         else:
-            self.system_prompts = {}
-            print("❌ AI system not configured - LLM unavailable")
+            self.langchain_tools = []
+            self.agents = {}
+            print("❌ AI agents not configured - LLM unavailable")
+    
+    def _convert_tools_to_langchain(self):
+        """Convertit les outils CrewAI en outils LangChain compatibles"""
+        try:
+            all_tools = self.sage_tools + self.document_tools
+            langchain_tools = convert_crewai_tools_to_langchain(all_tools)
+            print(f"✅ Converted {len(langchain_tools)} tools to LangChain format")
+            return langchain_tools
+        except Exception as e:
+            print(f"❌ Error converting tools: {e}")
+            return []
+    
+    def _create_langchain_agents(self):
+        """Crée les agents LangChain avec AgentExecutor"""
+        if not self.llm or not self.langchain_tools:
+            print("❌ Cannot create LangChain agents - missing LLM or tools")
+            return {}
+        
+        try:
+            agents = {}
+            
+            # Agent Comptable
+            comptable_prompt = ChatPromptTemplate.from_messages([
+                ("system", """Vous êtes un assistant comptable expert avec une connaissance approfondie de Sage Business Cloud Accounting. 
+                Vous excellez dans la gestion des clients, fournisseurs, factures, et produits. Vous savez également analyser des documents 
+                (factures PDF, images, fichiers CSV/Excel) pour extraire automatiquement les données comptables et les intégrer dans Sage.
+                
+                Vos spécialités incluent:
+                - Création et gestion des fiches clients et fournisseurs
+                - Saisie et traitement des factures
+                - Gestion du catalogue produits
+                - Analyse automatique de documents comptables
+                - Import en masse de données depuis des fichiers
+                - Validation et contrôle de cohérence des données
+                
+                IMPORTANT: Utilisez les outils Sage disponibles pour effectuer des actions réelles dans le système.
+                
+                Si la demande implique une CRÉATION, MODIFICATION ou SUPPRESSION dans Sage:
+                - Préparez le plan d'action détaillé
+                - Expliquez exactement ce que vous allez faire
+                - Terminez par: "PLANNED_ACTION: [type:create_client/create_invoice/etc.] [description:détails]"
+                
+                Pour les CONSULTATIONS (lister, afficher, rechercher), utilisez directement les outils Sage."""),
+                MessagesPlaceholder(variable_name="chat_history", optional=True),
+                ("human", "{input}"),
+                MessagesPlaceholder(variable_name="agent_scratchpad"),
+            ])
+            
+            comptable_agent = create_openai_functions_agent(self.llm, self.langchain_tools, comptable_prompt)
+            agents['comptable'] = AgentExecutor(agent=comptable_agent, tools=self.langchain_tools, verbose=True)
+            
+            # Agent Analyste (version simplifiée avec les mêmes outils)
+            analyste_prompt = ChatPromptTemplate.from_messages([
+                ("system", """Vous êtes un analyste financier senior spécialisé dans l'interprétation des données comptables de Sage Business Cloud Accounting.
+                
+                Vos compétences incluent:
+                - Génération et analyse des bilans comptables
+                - Création de comptes de résultat détaillés
+                - Calcul et interprétation des KPIs financiers
+                - Recherche et analyse de transactions
+                - Validation de la qualité des données extraites de documents
+                
+                IMPORTANT: Utilisez les outils Sage disponibles pour accéder aux données réelles."""),
+                MessagesPlaceholder(variable_name="chat_history", optional=True),
+                ("human", "{input}"),
+                MessagesPlaceholder(variable_name="agent_scratchpad"),
+            ])
+            
+            analyste_agent = create_openai_functions_agent(self.llm, self.langchain_tools, analyste_prompt)
+            agents['analyste'] = AgentExecutor(agent=analyste_agent, tools=self.langchain_tools, verbose=True)
+            
+            # Agent Support
+            support_prompt = ChatPromptTemplate.from_messages([
+                ("system", """Vous êtes un expert en support technique et formation pour Sage Business Cloud Accounting.
+                
+                Vos domaines d'expertise:
+                - Formation et accompagnement des utilisateurs
+                - Résolution de problèmes techniques
+                - Explication des fonctionnalités Sage
+                - Guide d'utilisation du traitement automatique de documents
+                - Bonnes pratiques comptables et organisationnelles
+                
+                IMPORTANT: Utilisez les outils Sage disponibles pour démontrer les fonctionnalités."""),
+                MessagesPlaceholder(variable_name="chat_history", optional=True),
+                ("human", "{input}"),
+                MessagesPlaceholder(variable_name="agent_scratchpad"),
+            ])
+            
+            support_agent = create_openai_functions_agent(self.llm, self.langchain_tools, support_prompt)
+            agents['support'] = AgentExecutor(agent=support_agent, tools=self.langchain_tools, verbose=True)
+            
+            print(f"✅ Created {len(agents)} LangChain agents with tools")
+            return agents
+            
+        except Exception as e:
+            print(f"❌ Error creating LangChain agents: {e}")
+            return {}
     
     def _create_system_prompts(self):
         """Crée les prompts système pour différents types d'agents (sans CrewAI)"""
@@ -171,47 +273,44 @@ class SageAgentManager:
                 except Exception as e:
                     print(f"Warning: Could not set Sage credentials: {e}")
             
-            # Analyser le message pour déterminer le type d'agent approprié
+            # Analyser le message pour déterminer l'agent approprié  
             agent_type = self._determine_agent_type(user_message)
-            system_prompt = self.system_prompts.get(agent_type, self.system_prompts.get('comptable'))
+            selected_agent = self.agents.get(agent_type)
             
-            if not system_prompt:
-                return f"❌ Prompt système '{agent_type}' non disponible."
+            if not selected_agent:
+                return f"❌ Agent '{agent_type}' non disponible."
             
             # Créer le contexte de la tâche avec les credentials
             task_context = self._build_task_context(user_message, conversation_context, user_id, sage_credentials)
             
-            # Construire le prompt complet avec système + contexte + demande utilisateur
-            full_prompt = f"""{system_prompt}
-            
-            Contexte utilisateur: {task_context}
+            # Construire l'input pour l'agent LangChain avec contexte
+            agent_input = f"""Contexte utilisateur: {task_context}
             
             Demande: {user_message}
             
             Instructions:
             1. Analysez la demande de l'utilisateur
-            2. Si la demande concerne un document (analyse, extraction, import), utilisez d'abord les outils de traitement de documents appropriés
+            2. Si la demande concerne un document (analyse, extraction, import), utilisez d'abord les outils de traitement de documents appropriés  
             3. Utilisez ensuite les outils Sage nécessaires pour répondre à la demande
             4. IMPORTANT: Si la demande implique une CRÉATION, MODIFICATION ou SUPPRESSION dans Sage (clients, factures, produits, etc.), 
                NE PAS exécuter l'action immédiatement. Au lieu de cela:
                - Préparez le plan d'action détaillé
                - Expliquez exactement ce que vous allez faire
-               - Terminez votre réponse par: "PLANNED_ACTION: [type:create_client/create_invoice/etc.] [description:détails de l'action]"
-            5. Pour les demandes de CONSULTATION (lister, afficher, rechercher), utilisez directement les outils Sage sans demander confirmation
+               - Terminez par: "PLANNED_ACTION: [type:create_client/create_invoice/etc.] [description:détails de l'action]"
+            5. Pour les CONSULTATIONS (lister, afficher, rechercher), utilisez directement les outils Sage sans demander confirmation
             6. Fournissez une réponse complète et professionnelle
             7. Si vous analysez des documents, fournissez un résumé des données extraites et leur qualité
             
             Répondez de manière claire et structurée en français.
             """
             
-            # Appel direct à LangChain (moderne, sans CrewAI)
-            messages = [
-                SystemMessage(content=full_prompt),
-                HumanMessage(content=user_message)
-            ]
+            # Exécuter l'agent LangChain avec les outils
+            result = selected_agent.invoke({
+                "input": agent_input,
+                "chat_history": []  # Peut être étendu pour inclure l'historique
+            })
             
-            result = self.llm.invoke(messages)
-            result_str = result.content
+            result_str = result.get('output', str(result))
             
             # Check if the agent planned an action instead of executing it
             if "PLANNED_ACTION:" in result_str:

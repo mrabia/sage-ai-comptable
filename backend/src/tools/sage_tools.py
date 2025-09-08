@@ -552,6 +552,27 @@ class GetBankAccountsTool(SageBaseTool):
         except Exception as e:
             return f"❌ Erreur lors de la récupération des comptes bancaires: {str(e)}"
 
+class SageToolkit:
+    """Toolkit pour gérer les outils Sage Business Cloud Accounting"""
+    
+    def __init__(self, sage_base_url=None, access_token=None, client_id=None):
+        """Initialize the SageToolkit with optional credentials"""
+        self.sage_base_url = sage_base_url
+        self.access_token = access_token
+        self.client_id = client_id
+        
+        # Set global credentials if provided
+        if access_token and client_id:
+            set_user_credentials({
+                'access_token': access_token,
+                'client_id': client_id,
+                'base_url': sage_base_url or 'https://api.accounting.sage.com/v3.1'
+            })
+    
+    def get_tools(self):
+        """Retourne la liste des outils Sage disponibles"""
+        return SAGE_TOOLS
+
 # Liste de tous les outils Sage disponibles
 try:
     SAGE_TOOLS = [
