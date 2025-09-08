@@ -47,11 +47,40 @@ except ImportError as e:
     def ai_disabled_response():
         return jsonify({'error': 'AI functionality is temporarily unavailable', 'ai_enabled': False}), 503
     
+    def ai_chat_fallback_response():
+        # Get user message from request
+        data = request.get_json() if request.is_json else {}
+        user_message = data.get('message', '').lower()
+        
+        # Simple keyword-based responses for common Sage operations
+        if any(word in user_message for word in ['client', 'customer']):
+            response = "Pour gérer vos clients, utilisez les outils Sage disponibles dans l'interface. Vous pouvez consulter la liste des clients ou en créer de nouveaux via les actions rapides."
+        elif any(word in user_message for word in ['facture', 'invoice']):
+            response = "Pour gérer vos factures, accédez aux outils de facturation Sage. Vous pouvez créer, consulter et gérer vos factures directement."
+        elif any(word in user_message for word in ['bilan', 'balance']):
+            response = "Pour consulter votre bilan comptable, utilisez l'outil de reporting Sage disponible dans les actions rapides."
+        elif any(word in user_message for word in ['fournisseur', 'supplier']):
+            response = "Pour gérer vos fournisseurs, utilisez les outils de gestion des fournisseurs Sage via les actions rapides."
+        else:
+            response = "L'agent IA n'est pas disponible actuellement. Cependant, avec Sage connecté, vous pouvez utiliser les actions rapides pour gérer vos données comptables : clients, factures, bilan, fournisseurs, etc."
+        
+        return jsonify({
+            'response': response,
+            'ai_enabled': False,
+            'sage_connected': True,
+            'suggestions': [
+                "Afficher les clients",
+                "Voir les factures récentes", 
+                "Consulter le bilan comptable",
+                "Gérer les fournisseurs"
+            ]
+        }), 200
+    
     @ai_agent_bp.route('/agent/chat', methods=['POST', 'OPTIONS'])
     def ai_chat_disabled():
         if request.method == 'OPTIONS':
             return jsonify({}), 200
-        return ai_disabled_response()
+        return ai_chat_fallback_response()
         
     @ai_agent_bp.route('/agent/status', methods=['GET', 'OPTIONS'])
     def ai_status():
@@ -81,7 +110,11 @@ except ImportError as e:
     def ai_execute_action_disabled():
         if request.method == 'OPTIONS':
             return jsonify({}), 200
-        return ai_disabled_response()
+        return jsonify({
+            'success': False,
+            'message': 'AI functionality is not available. Please use manual Sage operations.',
+            'ai_enabled': False
+        }), 200
 except Exception as e:
     logger.error(f"Unexpected error loading AI components: {e}")
     AI_ENABLED = False
