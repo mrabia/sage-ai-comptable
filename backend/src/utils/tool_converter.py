@@ -1,80 +1,93 @@
 """
-Utilitaire pour convertir les outils CrewAI en outils LangChain compatibles
-Option A implementation - Modern LangChain stack
+Utilitaire pour convertir les outils Sage en outils LangChain compatibles
+Modern LangChain 0.3.x + Pydantic v2 implementation
 """
 
-from langchain.tools import BaseTool as LangChainBaseTool
-from typing import Type, Any, Optional, Dict
-from pydantic import BaseModel
+from langchain_core.tools import BaseTool as LangChainBaseTool
+from langchain_core.callbacks import CallbackManagerForToolRun
+from typing import Type, Any, Optional, Dict, Union
+from pydantic import BaseModel, Field
 import inspect
 
 
-class CrewAIToLangChainToolWrapper(LangChainBaseTool):
-    """Wrapper pour convertir un outil CrewAI en outil LangChain"""
+class SageToLangChainToolWrapper(LangChainBaseTool):
+    """Wrapper moderne pour convertir un outil Sage en outil LangChain 0.3.x"""
     
-    crewai_tool: Any
+    name: str = Field(..., description="Tool name")
+    description: str = Field(..., description="Tool description") 
+    sage_tool: Any = Field(..., description="The wrapped Sage tool")
     
-    def __init__(self, crewai_tool: Any, **kwargs):
-        self.crewai_tool = crewai_tool
-        
-        # Extraire les métadonnées de l'outil CrewAI
-        name = getattr(crewai_tool, 'name', crewai_tool.__class__.__name__)
-        description = getattr(crewai_tool, 'description', f"Tool: {name}")
+    def __init__(self, sage_tool: Any, **kwargs):
+        # Extraire les métadonnées de l'outil Sage
+        tool_name = getattr(sage_tool, 'name', sage_tool.__class__.__name__)
+        tool_description = getattr(sage_tool, 'description', f"Tool: {tool_name}")
         
         super().__init__(
-            name=name,
-            description=description,
+            name=tool_name,
+            description=tool_description,
+            sage_tool=sage_tool,
             **kwargs
         )
     
-    def _run(self, *args, **kwargs) -> str:
-        """Exécute l'outil CrewAI"""
+    def _run(
+        self, 
+        run_manager: Optional[CallbackManagerForToolRun] = None,
+        **kwargs: Any
+    ) -> str:
+        """Exécute l'outil Sage avec la nouvelle interface LangChain 0.3.x"""
         try:
-            # Appeler la méthode _run de l'outil CrewAI
-            if hasattr(self.crewai_tool, '_run'):
-                return self.crewai_tool._run(*args, **kwargs)
-            elif hasattr(self.crewai_tool, 'run'):
-                return self.crewai_tool.run(*args, **kwargs)
-            elif callable(self.crewai_tool):
-                return self.crewai_tool(*args, **kwargs)
+            # Appeler la méthode _run de l'outil Sage
+            if hasattr(self.sage_tool, '_run'):
+                return str(self.sage_tool._run(**kwargs))
+            elif hasattr(self.sage_tool, 'run'):
+                return str(self.sage_tool.run(**kwargs))
+            elif callable(self.sage_tool):
+                return str(self.sage_tool(**kwargs))
             else:
                 return f"❌ Impossible d'exécuter l'outil {self.name}"
         except Exception as e:
             return f"❌ Erreur dans l'outil {self.name}: {str(e)}"
     
-    async def _arun(self, *args, **kwargs) -> str:
+    async def _arun(
+        self, 
+        run_manager: Optional[CallbackManagerForToolRun] = None,
+        **kwargs: Any
+    ) -> str:
         """Version async (fallback vers sync)"""
-        return self._run(*args, **kwargs)
+        return self._run(run_manager=run_manager, **kwargs)
 
 
-def convert_crewai_tools_to_langchain(crewai_tools: list) -> list:
+def convert_sage_tools_to_langchain(sage_tools: list) -> list:
     """
-    Convertit une liste d'outils CrewAI en outils LangChain compatibles
+    Convertit une liste d'outils Sage en outils LangChain 0.3.x compatibles
     
     Args:
-        crewai_tools: Liste des outils CrewAI
+        sage_tools: Liste des outils Sage
         
     Returns:
         Liste des outils LangChain compatibles
     """
     langchain_tools = []
     
-    for tool in crewai_tools:
+    for tool in sage_tools:
         try:
-            wrapper = CrewAIToLangChainToolWrapper(tool)
+            wrapper = SageToLangChainToolWrapper(tool)
             langchain_tools.append(wrapper)
             print(f"✅ Converted tool: {wrapper.name}")
         except Exception as e:
             print(f"❌ Failed to convert tool {getattr(tool, 'name', 'unknown')}: {e}")
             continue
     
-    print(f"✅ Converted {len(langchain_tools)}/{len(crewai_tools)} tools successfully")
+    print(f"✅ Converted {len(langchain_tools)}/{len(sage_tools)} tools successfully")
     return langchain_tools
+
+# Backward compatibility alias
+convert_crewai_tools_to_langchain = convert_sage_tools_to_langchain
 
 
 def create_langchain_tool_from_function(func, name: str, description: str):
     """
-    Crée un outil LangChain à partir d'une fonction simple
+    Crée un outil LangChain 0.3.x à partir d'une fonction simple
     
     Args:
         func: Fonction à wrapper
@@ -86,16 +99,24 @@ def create_langchain_tool_from_function(func, name: str, description: str):
     """
     
     class FunctionTool(LangChainBaseTool):
-        name = name
-        description = description
+        name: str = Field(default=name, description="Function tool name")
+        description: str = Field(default=description, description="Function tool description")
         
-        def _run(self, *args, **kwargs) -> str:
+        def _run(
+            self, 
+            run_manager: Optional[CallbackManagerForToolRun] = None,
+            **kwargs: Any
+        ) -> str:
             try:
-                return str(func(*args, **kwargs))
+                return str(func(**kwargs))
             except Exception as e:
                 return f"❌ Erreur dans {name}: {str(e)}"
         
-        async def _arun(self, *args, **kwargs) -> str:
-            return self._run(*args, **kwargs)
+        async def _arun(
+            self, 
+            run_manager: Optional[CallbackManagerForToolRun] = None,
+            **kwargs: Any
+        ) -> str:
+            return self._run(run_manager=run_manager, **kwargs)
     
     return FunctionTool()
