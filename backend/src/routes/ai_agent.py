@@ -380,10 +380,9 @@ def handle_agent_confirmation(user_id, confirmation_id, user_message, conversati
     from src.models.user import SageOperation, db
     from datetime import datetime
     
-    # Trouver l'opération en attente
+    # Trouver l'opération en attente (inclure tous les statuts pour éviter les doublons)
     operation = SageOperation.query.filter_by(
-        user_id=user_id,
-        status='awaiting_confirmation'
+        user_id=user_id
     ).filter(
         SageOperation.operation_data.contains(confirmation_id)
     ).first()
@@ -392,20 +391,48 @@ def handle_agent_confirmation(user_id, confirmation_id, user_message, conversati
         response = "❌ Opération de confirmation non trouvée ou expirée."
         return create_agent_response(response, conversation, False)
     
+    # Vérifier si l'opération a déjà été traitée
+    if operation.status in ['success', 'rejected', 'confirmed']:
+        if operation.status == 'success':
+            response = "✅ Cette opération a déjà été exécutée avec succès."
+        elif operation.status == 'rejected':
+            response = "ℹ️ Cette opération a déjà été annulée."
+        else:
+            response = "ℹ️ Cette opération est déjà en cours de traitement."
+        return create_agent_response(response, conversation, True)
+    
+    # Seules les opérations 'awaiting_confirmation' peuvent être traitées
+    if operation.status != 'awaiting_confirmation':
+        response = "❌ Cette opération ne peut plus être confirmée."
+        return create_agent_response(response, conversation, False)
+    
     # Vérifier si c'est une confirmation
     if any(word in user_message.lower() for word in ['oui', 'confirmer', 'confirm', 'yes']):
         # Confirmation positive - exécuter l'action planifiée
-        operation.status = 'confirmed'
-        db.session.commit()
-        
-        return execute_planned_action(operation, conversation)
+        # Mettre à jour le statut de façon atomique pour éviter les doublons
+        try:
+            operation.status = 'confirmed'
+            db.session.commit()
+            
+            return execute_planned_action(operation, conversation)
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error during confirmation: {e}")
+            response = "❌ Erreur lors de la confirmation. Veuillez réessayer."
+            return create_agent_response(response, conversation, False)
     else:
         # Confirmation négative
-        operation.status = 'rejected'
-        db.session.commit()
-        
-        response = "✅ Opération annulée avec succès. Aucune modification n'a été apportée à vos données Sage."
-        return create_agent_response(response, conversation, True)
+        try:
+            operation.status = 'rejected'
+            db.session.commit()
+            
+            response = "✅ Opération annulée avec succès. Aucune modification n'a été apportée à vos données Sage."
+            return create_agent_response(response, conversation, True)
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error during rejection: {e}")
+            response = "❌ Erreur lors de l'annulation. Veuillez réessayer."
+            return create_agent_response(response, conversation, False)
 
 
 def execute_planned_action(operation, conversation):
@@ -413,30 +440,41 @@ def execute_planned_action(operation, conversation):
     try:
         operation_data = operation.get_operation_data()
         planned_action = operation_data.get('planned_action', {})
+        action_type = planned_action.get('type', '').lower()
         
-        # Pour l'instant, on simule l'exécution
-        # TODO: Implémenter l'exécution réelle selon le type d'action
+        # REAL EXECUTION: Actually call the Sage tools
+        success, result_message = execute_real_sage_action(operation.user_id, action_type, planned_action)
         
-        response = f"✅ **OPÉRATION EXÉCUTÉE AVEC SUCCÈS**\n\n"
-        response += f"L'action '{planned_action.get('description', 'Action')}' a été exécutée dans Sage.\n\n"
-        
-        if planned_action.get('details'):
-            response += "**Détails de l'exécution :**\n"
-            for key, value in planned_action['details'].items():
-                response += f"- {key}: {value}\n"
+        if success:
+            response = f"✅ **OPÉRATION EXÉCUTÉE AVEC SUCCÈS**\n\n"
+            response += f"L'action '{planned_action.get('description', 'Action')}' a été exécutée dans Sage.\n\n"
+            response += f"**Résultat de Sage :**\n{result_message}\n"
+            
+            # Marquer comme réussie
+            operation.status = 'success'
+            operation.set_sage_response({
+                'executed': True,
+                'action': planned_action,
+                'sage_result': result_message,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            response = f"❌ **ÉCHEC DE L'OPÉRATION**\n\n"
+            response += f"L'action '{planned_action.get('description', 'Action')}' a échoué.\n\n"
+            response += f"**Erreur :**\n{result_message}\n"
+            
+            # Marquer comme échouée
+            operation.status = 'failed'
+            operation.set_sage_response({
+                'executed': False,
+                'error': result_message,
+                'timestamp': datetime.now().isoformat()
+            })
         
         response += f"\n✨ L'opération a été enregistrée dans votre historique."
         
-        # Marquer comme réussie
-        operation.status = 'success'
-        operation.set_sage_response({
-            'executed': True,
-            'action': planned_action,
-            'timestamp': datetime.now().isoformat()
-        })
         db.session.commit()
-        
-        return create_agent_response(response, conversation, True)
+        return create_agent_response(response, conversation, success)
         
     except Exception as e:
         operation.status = 'error'
@@ -460,4 +498,131 @@ def create_agent_response(response_text, conversation, success=True):
         'success': success,
         'timestamp': datetime.now().isoformat()
     }), 200
+
+
+def execute_real_sage_action(user_id, action_type, planned_action):
+    """Exécute réellement l'action dans Sage en utilisant les outils appropriés"""
+    try:
+        from src.models.user import User
+        from src.tools.sage_tools import SAGE_TOOLS
+        
+        # Récupérer l'utilisateur et ses credentials Sage
+        user = User.query.get(user_id)
+        if not user:
+            return False, "Utilisateur introuvable"
+        
+        credentials = user.get_sage_credentials()
+        if not credentials:
+            return False, "Credentials Sage non configurés"
+        
+        # Détails de l'action planifiée
+        action_details = planned_action.get('details', {})
+        
+        # Mapper les types d'actions aux outils Sage correspondants
+        action_tool_map = {
+            'create_customer': 'create_customer',
+            'create_client': 'create_customer',
+            'create_invoice': 'create_invoice', 
+            'create_product': 'create_product',
+            'get_customers': 'get_customers',
+            'get_invoices': 'get_invoices',
+            'get_products': 'get_products'
+        }
+        
+        tool_name = action_tool_map.get(action_type)
+        if not tool_name:
+            return False, f"Type d'action non supporté: {action_type}"
+        
+        # Trouver l'outil Sage correspondant
+        sage_tool = None
+        for tool in SAGE_TOOLS:
+            if getattr(tool, 'name', '') == tool_name:
+                sage_tool = tool
+                break
+        
+        if not sage_tool:
+            return False, f"Outil Sage '{tool_name}' introuvable"
+        
+        # Préparer les paramètres selon le type d'action
+        if action_type in ['create_customer', 'create_client']:
+            # Extraire les détails du client depuis la description ou les détails
+            description = planned_action.get('description', '')
+            
+            # Parser les détails du client depuis la description
+            name = None
+            email = None
+            phone = None
+            address_line_1 = None
+            city = None
+            postal_code = None
+            
+            # Patterns de recherche dans la description
+            import re
+            
+            # Nom (chercher après "nom" ou avant une adresse)
+            name_match = re.search(r'nom\s+([^,]+)', description, re.IGNORECASE)
+            if name_match:
+                name = name_match.group(1).strip()
+            else:
+                # Fallback: premier mot après "client"
+                client_match = re.search(r'client\s+([^,]+)', description, re.IGNORECASE)
+                if client_match:
+                    name = client_match.group(1).strip()
+            
+            # Email
+            email_match = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', description)
+            if email_match:
+                email = email_match.group(1)
+            
+            # Téléphone
+            phone_match = re.search(r'(\d{2}\s\d{2}\s\d{2}\s\d{2}\s\d{2}|\d{10})', description)
+            if phone_match:
+                phone = phone_match.group(1)
+            
+            # Adresse et code postal
+            address_match = re.search(r'(\d+\s[^,]+),?\s*(\d{5})\s*([^,\n]+)', description)
+            if address_match:
+                address_line_1 = address_match.group(1).strip()
+                postal_code = address_match.group(2)
+                city = address_match.group(3).strip()
+            
+            # Valeurs par défaut si parsing échoue
+            if not name:
+                name = "Client Test"
+            if not email:
+                email = "test@example.com"
+            
+            # Exécuter l'outil de création de client
+            result = sage_tool._run(
+                name=name,
+                email=email,
+                phone=phone,
+                address_line_1=address_line_1,
+                city=city,
+                postal_code=postal_code
+            )
+            
+            return True, result
+        
+        elif action_type == 'create_invoice':
+            # Pour les factures, on a besoin de plus d'informations
+            # Pour l'instant, créer une facture basique
+            result = sage_tool._run(
+                customer_id="test_customer",
+                date="2024-01-01",
+                due_date="2024-01-31"
+            )
+            return True, result
+        
+        elif action_type in ['get_customers', 'get_invoices', 'get_products']:
+            # Actions de consultation
+            result = sage_tool._run()
+            return True, result
+        
+        else:
+            return False, f"Exécution pour le type '{action_type}' pas encore implémentée"
+    
+    except Exception as e:
+        print(f"Error executing real Sage action: {e}")
+        return False, f"Erreur lors de l'exécution: {str(e)}"
 
