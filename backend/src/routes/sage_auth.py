@@ -129,7 +129,7 @@ def sage_callback():
         db.session.commit()
         
         # Rediriger vers le frontend avec un message de succès
-        frontend_url = "https://truth-borders-em-exclusively.trycloudflare.com"
+        frontend_url = os.getenv('FRONTEND_URL', 'https://sage-ai-comptable-production.up.railway.app')
         return redirect(f"{frontend_url}?sage_auth=success")
         
     except Exception as e:
