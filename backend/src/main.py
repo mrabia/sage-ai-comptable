@@ -121,6 +121,22 @@ try:
     with app.app_context():
         db.create_all()
         logger.info("✅ Database tables created successfully")
+        
+        # Create demo user if it doesn't exist
+        from src.models.user import User
+        demo_user = User.query.filter_by(email='demo@test.com').first()
+        if not demo_user:
+            demo_user = User(
+                username='demo',
+                email='demo@test.com'
+            )
+            demo_user.set_password('password123')
+            db.session.add(demo_user)
+            db.session.commit()
+            logger.info("✅ Demo user created: demo@test.com / password123")
+        else:
+            logger.info("Demo user already exists")
+            
 except Exception as e:
     logger.error(f"❌ Database initialization error: {e}")
 

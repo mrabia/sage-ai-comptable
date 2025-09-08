@@ -4,7 +4,9 @@ import { toast } from 'sonner'
 
 const ChatContext = createContext({})
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'
+// Use relative URL for production (served from same domain) or localhost for development  
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
+  (import.meta.env.MODE === 'production' ? '/api' : 'http://localhost:5001/api')
 
 export function ChatProvider({ children }) {
   const { getAuthHeaders, isAuthenticated } = useAuth()
