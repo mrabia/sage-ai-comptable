@@ -1,15 +1,41 @@
 from flask import Blueprint, jsonify, request
-from src.agents.sage_agent import SageAgentManager
 
 test_bp = Blueprint('test', __name__)
 
-# Initialiser le gestionnaire d'agent
-agent_manager = SageAgentManager()
+# Initialize agent manager with graceful fallback
+agent_manager = None
+AI_COMPONENTS_AVAILABLE = False
+
+try:
+    from src.agents.sage_agent import SageAgentManager
+    agent_manager = SageAgentManager()
+    AI_COMPONENTS_AVAILABLE = True
+except ImportError as e:
+    print(f"AI components not available in test routes: {e}")
+    AI_COMPONENTS_AVAILABLE = False
+
+@test_bp.route('/test/status', methods=['GET'])
+def test_status():
+    """Check if test routes and AI components are available"""
+    return jsonify({
+        'test_routes_enabled': True,
+        'ai_components_available': AI_COMPONENTS_AVAILABLE,
+        'agent_manager_initialized': agent_manager is not None,
+        'status': 'operational' if AI_COMPONENTS_AVAILABLE else 'ai_disabled'
+    }), 200
 
 @test_bp.route('/test/agent', methods=['POST'])
 def test_agent():
     """Endpoint de test pour l'agent IA sans authentification"""
     try:
+        # Check if AI components are available
+        if not AI_COMPONENTS_AVAILABLE or agent_manager is None:
+            return jsonify({
+                'error': 'AI components not available',
+                'message': 'CrewAI or other AI dependencies are not properly installed',
+                'status': 'unavailable'
+            }), 503
+        
         data = request.json
         
         if not data or not data.get('message'):

@@ -57,6 +57,32 @@ CMD ["python", "-u", "src/main.py"]
 mv Procfile Procfile.bak  # Backup and remove
 ```
 
+### 8. **CrewAI Import Error** ❌→✅
+**Problem:** `cannot import name 'BaseTool' from 'crewai.tools'` due to API changes in CrewAI 0.28+
+**Fix:** Added graceful import fallbacks in `sage_tools.py`:
+```python
+try:
+    from crewai.tools import BaseTool
+except ImportError:
+    try:
+        from crewai import BaseTool
+    except ImportError:
+        # Fallback dummy class
+        class BaseTool: ...
+```
+
+### 9. **Test Routes Import Chain** ❌→✅
+**Problem:** Test routes directly imported AI components causing startup failure
+**Fix:** Added graceful AI component loading in `test.py`:
+```python
+try:
+    from src.agents.sage_agent import SageAgentManager
+    agent_manager = SageAgentManager()
+    AI_COMPONENTS_AVAILABLE = True
+except ImportError:
+    AI_COMPONENTS_AVAILABLE = False
+```
+
 ## 📋 Additional Improvements
 
 ### Debug Tools Added

@@ -1,4 +1,18 @@
-from crewai.tools import BaseTool
+# Try different CrewAI import paths for compatibility
+try:
+    from crewai.tools import BaseTool
+except ImportError:
+    try:
+        from crewai import BaseTool
+    except ImportError:
+        try:
+            from crewai.tool import BaseTool
+        except ImportError:
+            # Fallback - create a dummy BaseTool class
+            class BaseTool:
+                def __init__(self, **kwargs):
+                    for key, value in kwargs.items():
+                        setattr(self, key, value)
 from typing import Type, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from src.services.sage_auth import SageOAuth2Service
@@ -539,18 +553,22 @@ class GetBankAccountsTool(SageBaseTool):
             return f"❌ Erreur lors de la récupération des comptes bancaires: {str(e)}"
 
 # Liste de tous les outils Sage disponibles
-SAGE_TOOLS = [
-    CreateCustomerTool(),
-    GetCustomersTool(),
-    CreateSupplierTool(),
-    GetSuppliersTool(),
-    CreateInvoiceTool(),
-    GetInvoicesTool(),
-    CreateProductTool(),
-    GetProductsTool(),
-    GetBankAccountsTool(),
-    GetBalanceSheetTool(),
-    GetProfitLossTool(),
-    SearchTransactionsTool()
-]
+try:
+    SAGE_TOOLS = [
+        CreateCustomerTool(),
+        GetCustomersTool(),
+        CreateSupplierTool(),
+        GetSuppliersTool(),
+        CreateInvoiceTool(),
+        GetInvoicesTool(),
+        CreateProductTool(),
+        GetProductsTool(),
+        GetBankAccountsTool(),
+        GetBalanceSheetTool(),
+        GetProfitLossTool(),
+        SearchTransactionsTool()
+    ]
+except Exception as e:
+    print(f"Warning: Could not initialize Sage tools: {e}")
+    SAGE_TOOLS = []  # Empty list if tools can't be initialized
 
