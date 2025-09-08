@@ -1,4 +1,5 @@
 import os
+import httpx
 from crewai import Agent, Task, Crew
 
 # Import ChatOpenAI with fallback (using programmer's clean approach + my error handling)
@@ -32,47 +33,34 @@ class SageAgentManager:
         
         if LLM_AVAILABLE and ChatOpenAI:
             api_key = os.getenv("OPENAI_API_KEY")
-            if api_key:
-                try:
-                    # Configuration LLM avec support proxy OpenAI 1.x (expert solution)
-                    import httpx
-                    
-                    # Configure proxy via httpx client (OpenAI 1.x pattern)
-                    proxy = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
-                    http_client = httpx.Client(proxies=proxy, timeout=30.0) if proxy else None
-                    
-                    llm_config = {
-                        "model": "gpt-4o-mini",
-                        "api_key": api_key,
-                        "base_url": os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
-                        "temperature": 0.1,
-                        "max_tokens": 2000
-                    }
-                    
-                    # Add http_client if proxy is configured
-                    if http_client:
-                        llm_config["http_client"] = http_client
-                    
-                    self.llm = ChatOpenAI(**llm_config)
-                    self.agents_available = True
-                    print("✅ LLM configured successfully (OpenAI 1.x pattern)")
-                except Exception as e:
-                    print(f"❌ Expert solution failed, trying fallback: {e}")
-                    try:
-                        # Fallback: minimal config without any proxy settings
-                        self.llm = ChatOpenAI(
-                            model="gpt-4o-mini",
-                            api_key=api_key,
-                            temperature=0.1,
-                            max_tokens=2000
-                        )
-                        self.agents_available = True
-                        print("✅ LLM configured successfully (fallback)")
-                    except Exception as e2:
-                        print(f"❌ All LLM configurations failed: {e2}")
-                        self.llm = None
-            else:
+            if not api_key:
                 print("⚠️ OPENAI_API_KEY not found - AI agents will be unavailable")
+            else:
+                try:
+                    base_url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+                    proxy_url = (os.getenv("HTTPS_PROXY")
+                                 or os.getenv("HTTP_PROXY")
+                                 or os.getenv("ALL_PROXY"))
+                    timeout_s = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
+
+                    http_client = httpx.Client(
+                        proxies=proxy_url if proxy_url else None,
+                        timeout=timeout_s,
+                    )
+
+                    self.llm = ChatOpenAI(
+                        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                        api_key=api_key,
+                        base_url=base_url,
+                        http_client=http_client,
+                        temperature=0.1,
+                        max_tokens=2000,
+                    )
+                    self.agents_available = True
+                    print(f"✅ LLM configured (model={os.getenv('OPENAI_MODEL', 'gpt-4o-mini')}, base_url={base_url})")
+                except Exception as e:
+                    print(f"❌ Error configuring LLM: {e}")
+                    self.llm = None
         else:
             print("❌ ChatOpenAI not available - AI agents will be unavailable")
         

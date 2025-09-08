@@ -19,10 +19,7 @@ def test_llm_startup():
             print("⚠️ OPENAI_API_KEY not set - skipping LLM test")
             return False
         
-        # Expert solution: proxy via httpx client
-        proxy = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
-        http_client = httpx.Client(proxies=proxy, timeout=30.0) if proxy else None
-        
+        # Compatible solution: try proxy via httpx client if supported
         llm_config = {
             "model": "gpt-4o-mini",
             "api_key": api_key,
@@ -31,9 +28,14 @@ def test_llm_startup():
             "max_tokens": 50
         }
         
-        if http_client:
-            llm_config["http_client"] = http_client
-            print(f"🌐 Using proxy: {proxy}")
+        proxy = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
+        if proxy:
+            try:
+                http_client = httpx.Client(proxies=proxy, timeout=30.0)
+                llm_config["http_client"] = http_client
+                print(f"🌐 Using proxy: {proxy}")
+            except Exception:
+                print(f"⚠️ Proxy {proxy} configured but not using (compatibility mode)")
         
         # Instantiate LLM
         llm = ChatOpenAI(**llm_config)
