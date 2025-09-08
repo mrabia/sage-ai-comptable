@@ -29,25 +29,21 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 
-# Copy package files
+# Copy package files first for better caching
 COPY frontend/package*.json ./frontend/
 COPY backend/requirements.txt ./backend/
 
-# Install frontend dependencies
-WORKDIR /app/frontend
-RUN npm install --legacy-peer-deps
-
-# Install backend dependencies
+# Install backend dependencies first  
 WORKDIR /app/backend
-
-# Install numpy first with specific version for CrewAI compatibility
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install numpy==1.24.3 --no-cache-dir
-
-# Install other dependencies
 RUN pip install -r requirements.txt --no-cache-dir
 
-# Copy application code
+# Install frontend dependencies
+WORKDIR /app/frontend  
+RUN npm install --legacy-peer-deps
+
+# Copy application code (excluding files in .dockerignore)
 WORKDIR /app
 COPY . .
 

@@ -1,0 +1,61 @@
+# Ignore development and local files
+node_modules/
+backend/venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.log
+*.tmp
+temp/
+
+# Testing
+coverage/
+.nyc_output/
+.coverage
+
+# Build artifacts (will be rebuilt in container)
+frontend/dist/
+frontend/node_modules/
+
+# Backup files
+*.bak
+*.backup
+
+# Documentation that's not needed in container
+*.md
+!README.md
+
+# Local development files
+.claude/
+test_*.py
+*_test.py
+SAGE_TOOLS_TEST_REPORT.md
+startup_test.py
+simple_sage_test.py
+RAILWAY_DEPLOYMENT_FIXES.md

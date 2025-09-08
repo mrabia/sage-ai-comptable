@@ -50,12 +50,25 @@ ENV RAILWAY_ENVIRONMENT=production
 CMD ["python", "-u", "src/main.py"]
 ```
 
+### 7. **Procfile Conflict** ❌→✅  
+**Problem:** `Procfile` conflicted with Dockerfile deployment, causing "cd executable not found"
+**Fix:** Removed/renamed conflicting `Procfile` to use Docker-only deployment:
+```bash
+mv Procfile Procfile.bak  # Backup and remove
+```
+
 ## 📋 Additional Improvements
 
 ### Debug Tools Added
 - ✅ **Startup Test Script** (`startup_test.py`) for debugging container issues
+- ✅ **Docker Test Script** (`test-docker-build.sh`) for local testing
 - ✅ **Better Error Logging** with unbuffered Python output
 - ✅ **Environment Detection** for Railway vs local development
+
+### Build Optimization
+- ✅ **Docker Ignore File** (`.dockerignore`) to exclude unnecessary files
+- ✅ **Layer Optimization** reordered Dockerfile steps for better caching
+- ✅ **Health Check** configured in railway.json
 
 ### File Structure Fixes
 - ✅ **Static Files** properly copied from frontend build
