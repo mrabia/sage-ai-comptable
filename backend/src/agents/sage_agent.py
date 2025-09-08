@@ -43,21 +43,41 @@ class SageAgentManager:
                                  or os.getenv("ALL_PROXY"))
                     timeout_s = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
 
-                    http_client = httpx.Client(
-                        proxies=proxy_url if proxy_url else None,
-                        timeout=timeout_s,
-                    )
+                    # Try expert solution (http_client) first for langchain 0.1.x compatibility
+                    try:
+                        http_client = httpx.Client(
+                            proxies=proxy_url if proxy_url else None,
+                            timeout=timeout_s,
+                        )
 
-                    self.llm = ChatOpenAI(
-                        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-                        api_key=api_key,
-                        base_url=base_url,
-                        http_client=http_client,
-                        temperature=0.1,
-                        max_tokens=2000,
-                    )
-                    self.agents_available = True
-                    print(f"✅ LLM configured (model={os.getenv('OPENAI_MODEL', 'gpt-4o-mini')}, base_url={base_url})")
+                        self.llm = ChatOpenAI(
+                            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                            api_key=api_key,
+                            base_url=base_url,
+                            http_client=http_client,
+                            temperature=0.1,
+                            max_tokens=2000,
+                        )
+                        self.agents_available = True
+                        print(f"✅ LLM configured with http_client (model={os.getenv('OPENAI_MODEL', 'gpt-4o-mini')}, base_url={base_url})")
+                    
+                    except Exception as http_client_error:
+                        # Fallback: langchain 0.1.x might not support http_client
+                        print(f"⚠️ http_client not supported, trying fallback: {http_client_error}")
+                        try:
+                            self.llm = ChatOpenAI(
+                                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                                api_key=api_key,
+                                base_url=base_url,
+                                temperature=0.1,
+                                max_tokens=2000,
+                            )
+                            self.agents_available = True
+                            print(f"✅ LLM configured without proxy (model={os.getenv('OPENAI_MODEL', 'gpt-4o-mini')}, base_url={base_url})")
+                        except Exception as fallback_error:
+                            print(f"❌ All LLM configurations failed: {fallback_error}")
+                            self.llm = None
+                            
                 except Exception as e:
                     print(f"❌ Error configuring LLM: {e}")
                     self.llm = None
