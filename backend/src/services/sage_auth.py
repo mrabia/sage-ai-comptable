@@ -54,7 +54,8 @@ class SageOAuth2Service:
             'state': state,
             'filter': 'apiv3.1',
             'code_challenge': code_challenge,
-            'code_challenge_method': 'S256'
+            'code_challenge_method': 'S256',
+            'prompt': 'consent'  # Force l'affichage de la page d'autorisation
         }
         
         if country:
