@@ -55,6 +55,9 @@ COPY . .
 WORKDIR /app/frontend
 RUN npm run build
 
+# Copy frontend build to backend static folder
+RUN mkdir -p /app/backend/src/static && cp -r /app/frontend/dist/* /app/backend/src/static/
+
 # Set final working directory
 WORKDIR /app/backend
 
@@ -66,8 +69,14 @@ RUN mkdir -p /app/backend/database
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
-EXPOSE 8080
+# Expose port (Railway will override with PORT env var)
+EXPOSE 5000
 
-# Start command
-CMD ["python", "src/main.py"]
+# Set Python path to find modules
+ENV PYTHONPATH=/app/backend
+
+# Add Railway-specific environment
+ENV RAILWAY_ENVIRONMENT=production
+
+# Start command with full path and error handling
+CMD ["python", "-u", "src/main.py"]
