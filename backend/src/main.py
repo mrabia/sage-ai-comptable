@@ -431,9 +431,6 @@ if not AI_ENABLED:
             'message': 'AI functionality is not available. Please use manual Sage operations.',
             'ai_enabled': False
         }), 200
-except Exception as e:
-    logger.error(f"Unexpected error loading AI components: {e}")
-    AI_ENABLED = False
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 
