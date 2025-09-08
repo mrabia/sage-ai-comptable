@@ -33,6 +33,7 @@ class SageAPIService:
         params = {
             '$top': limit,
             '$skip': offset,
+            'contact_type_id': 'CUSTOMER',  # Utiliser CUSTOMER selon API officielle
             'attributes': 'all'
         }
         
@@ -40,26 +41,53 @@ class SageAPIService:
     
     def create_customer(self, credentials: Dict[str, Any], customer_data: Dict[str, Any],
                        business_id: Optional[str] = None) -> Dict[str, Any]:
-        """Crée un nouveau client"""
-        # Structure de base pour un client Sage
-        sage_customer = {
-            'contact_type_id': '1',  # 1 = Customer
-            'name': customer_data.get('name'),
-            'email': customer_data.get('email'),
-            'telephone': customer_data.get('phone', ''),
+        """Crée un nouveau client selon l'API officielle Sage"""
+        
+        # Structure officielle Sage API - doit être wrappée dans 'contact'
+        contact_obj = {
+            'contact_type_ids': ["CUSTOMER"],  # Array selon API officielle
+            'name': customer_data.get('name', '')
+        }
+        
+        # Ajouter les champs optionnels seulement s'ils sont fournis et non vides
+        optional_fields = {
+            'reference': customer_data.get('reference', ''),
+            'email': customer_data.get('email', ''),
+            'phone': customer_data.get('phone', ''),
             'mobile': customer_data.get('mobile', ''),
             'website': customer_data.get('website', ''),
             'notes': customer_data.get('notes', ''),
-            'main_address': {
-                'address_line_1': customer_data.get('address_line_1', ''),
-                'address_line_2': customer_data.get('address_line_2', ''),
-                'city': customer_data.get('city', ''),
-                'postal_code': customer_data.get('postal_code', ''),
-                'country_id': customer_data.get('country_id', 'FR')  # France par défaut
-            }
+            'tax_number': customer_data.get('tax_number', '')
         }
         
-        return self._make_request('POST', 'contacts', credentials, business_id, json=sage_customer)
+        for field, value in optional_fields.items():
+            if value and value.strip():
+                contact_obj[field] = value
+        
+        # Ajouter l'adresse principale si des informations d'adresse sont fournies
+        address_fields = ['address_line_1', 'address_line_2', 'city', 'region', 'postal_code']
+        address_data = {field: customer_data.get(field, '') for field in address_fields}
+        
+        if any(address_data.values()):
+            main_address = {
+                'address_type_id': 'SALES',  # Default pour les clients selon la doc officielle
+                'name': customer_data.get('name', ''),
+                'is_main_address': True  # Requis selon API officielle
+            }
+            
+            # Ajouter les champs d'adresse s'ils sont fournis
+            for field, value in address_data.items():
+                if value and value.strip():
+                    main_address[field] = value
+            
+            # Ajouter country_group_id par défaut
+            main_address['country_group_id'] = customer_data.get('country_group_id', 'FR')
+            
+            contact_obj['main_address'] = main_address
+        
+        sage_request = {'contact': contact_obj}
+        
+        return self._make_request('POST', 'contacts', credentials, business_id, json=sage_request)
     
     def update_customer(self, credentials: Dict[str, Any], customer_id: str, 
                        customer_data: Dict[str, Any], business_id: Optional[str] = None) -> Dict[str, Any]:
@@ -80,7 +108,7 @@ class SageAPIService:
         params = {
             '$top': limit,
             '$skip': offset,
-            '$filter': 'contact_type_id eq 2',  # 2 = Supplier
+            'contact_type_id': 'VENDOR',  # Utiliser VENDOR selon API officielle
             'attributes': 'all'
         }
         
@@ -88,25 +116,53 @@ class SageAPIService:
     
     def create_supplier(self, credentials: Dict[str, Any], supplier_data: Dict[str, Any],
                        business_id: Optional[str] = None) -> Dict[str, Any]:
-        """Crée un nouveau fournisseur"""
-        sage_supplier = {
-            'contact_type_id': '2',  # 2 = Supplier
-            'name': supplier_data.get('name'),
-            'email': supplier_data.get('email'),
-            'telephone': supplier_data.get('phone', ''),
+        """Crée un nouveau fournisseur selon l'API officielle Sage"""
+        
+        # Structure officielle Sage API pour fournisseur
+        contact_obj = {
+            'contact_type_ids': ["VENDOR"],  # VENDOR pour fournisseur selon API officielle
+            'name': supplier_data.get('name', '')
+        }
+        
+        # Ajouter les champs optionnels seulement s'ils sont fournis et non vides
+        optional_fields = {
+            'reference': supplier_data.get('reference', ''),
+            'email': supplier_data.get('email', ''),
+            'phone': supplier_data.get('phone', ''),
             'mobile': supplier_data.get('mobile', ''),
             'website': supplier_data.get('website', ''),
             'notes': supplier_data.get('notes', ''),
-            'main_address': {
-                'address_line_1': supplier_data.get('address_line_1', ''),
-                'address_line_2': supplier_data.get('address_line_2', ''),
-                'city': supplier_data.get('city', ''),
-                'postal_code': supplier_data.get('postal_code', ''),
-                'country_id': supplier_data.get('country_id', 'FR')
-            }
+            'tax_number': supplier_data.get('tax_number', '')
         }
         
-        return self._make_request('POST', 'contacts', credentials, business_id, json=sage_supplier)
+        for field, value in optional_fields.items():
+            if value and value.strip():
+                contact_obj[field] = value
+        
+        # Ajouter l'adresse principale si des informations d'adresse sont fournies
+        address_fields = ['address_line_1', 'address_line_2', 'city', 'region', 'postal_code']
+        address_data = {field: supplier_data.get(field, '') for field in address_fields}
+        
+        if any(address_data.values()):
+            main_address = {
+                'address_type_id': 'PURCHASING',  # Default pour les fournisseurs selon la doc officielle
+                'name': supplier_data.get('name', ''),
+                'is_main_address': True  # Requis selon API officielle
+            }
+            
+            # Ajouter les champs d'adresse s'ils sont fournis
+            for field, value in address_data.items():
+                if value and value.strip():
+                    main_address[field] = value
+            
+            # Ajouter country_group_id par défaut
+            main_address['country_group_id'] = supplier_data.get('country_group_id', 'FR')
+            
+            contact_obj['main_address'] = main_address
+        
+        sage_request = {'contact': contact_obj}
+        
+        return self._make_request('POST', 'contacts', credentials, business_id, json=sage_request)
     
     # ===== GESTION DES FACTURES =====
     
@@ -126,28 +182,46 @@ class SageAPIService:
     
     def create_invoice(self, credentials: Dict[str, Any], invoice_data: Dict[str, Any],
                       business_id: Optional[str] = None) -> Dict[str, Any]:
-        """Crée une nouvelle facture"""
-        # Structure de base pour une facture Sage
-        sage_invoice = {
+        """Crée une nouvelle facture selon l'API officielle Sage"""
+        
+        # Structure de base pour une facture Sage - doit être wrappée dans 'sales_invoice'
+        invoice_obj = {
             'contact_id': invoice_data.get('customer_id'),
-            'date': invoice_data.get('date', datetime.now().strftime('%Y-%m-%d')),
-            'due_date': invoice_data.get('due_date'),
-            'reference': invoice_data.get('reference', ''),
-            'notes': invoice_data.get('notes', ''),
-            'invoice_lines': []
+            'date': invoice_data.get('date', datetime.now().strftime('%Y-%m-%d'))
         }
         
+        # Ajouter les champs optionnels seulement s'ils sont fournis
+        optional_fields = {
+            'due_date': invoice_data.get('due_date'),
+            'reference': invoice_data.get('reference', ''),
+            'notes': invoice_data.get('notes', '')
+        }
+        
+        for field, value in optional_fields.items():
+            if value:
+                invoice_obj[field] = value
+        
         # Ajouter les lignes de facture
+        invoice_lines = []
         for item in invoice_data.get('items', []):
             line = {
                 'description': item.get('description'),
-                'quantity': item.get('quantity', 1),
-                'unit_price': item.get('unit_price'),
-                'tax_rate_id': item.get('tax_rate_id', '1')  # TVA par défaut
+                'quantity': float(item.get('quantity', 1)),
+                'unit_price': float(item.get('unit_price'))
             }
-            sage_invoice['invoice_lines'].append(line)
+            
+            # Ajouter tax_rate_id si fourni
+            if item.get('tax_rate_id'):
+                line['tax_rate_id'] = item.get('tax_rate_id')
+            
+            invoice_lines.append(line)
         
-        return self._make_request('POST', 'sales_invoices', credentials, business_id, json=sage_invoice)
+        if invoice_lines:
+            invoice_obj['invoice_lines'] = invoice_lines
+        
+        sage_request = {'sales_invoice': invoice_obj}
+        
+        return self._make_request('POST', 'sales_invoices', credentials, business_id, json=sage_request)
     
     def get_invoice(self, credentials: Dict[str, Any], invoice_id: str,
                    business_id: Optional[str] = None) -> Dict[str, Any]:
@@ -242,18 +316,33 @@ class SageAPIService:
     
     def create_product(self, credentials: Dict[str, Any], product_data: Dict[str, Any],
                       business_id: Optional[str] = None) -> Dict[str, Any]:
-        """Crée un nouveau produit/service"""
-        sage_product = {
+        """Crée un nouveau produit/service selon l'API officielle Sage"""
+        
+        # Structure de base pour un produit Sage - doit être wrappée dans 'product'
+        product_obj = {
             'item_code': product_data.get('code'),
-            'description': product_data.get('description'),
-            'sales_price': product_data.get('price'),
-            'purchase_price': product_data.get('cost_price', 0),
-            'usual_supplier_id': product_data.get('supplier_id'),
-            'sales_tax_rate_id': product_data.get('tax_rate_id', '1'),
-            'purchase_tax_rate_id': product_data.get('purchase_tax_rate_id', '1')
+            'description': product_data.get('description')
         }
         
-        return self._make_request('POST', 'products', credentials, business_id, json=sage_product)
+        # Ajouter les champs optionnels seulement s'ils sont fournis
+        optional_fields = {
+            'sales_price': product_data.get('price'),
+            'purchase_price': product_data.get('cost_price'),
+            'usual_supplier_id': product_data.get('supplier_id'),
+            'sales_tax_rate_id': product_data.get('tax_rate_id'),
+            'purchase_tax_rate_id': product_data.get('purchase_tax_rate_id')
+        }
+        
+        for field, value in optional_fields.items():
+            if value is not None:
+                if field in ['sales_price', 'purchase_price']:
+                    product_obj[field] = float(value)
+                else:
+                    product_obj[field] = value
+        
+        sage_request = {'product': product_obj}
+        
+        return self._make_request('POST', 'products', credentials, business_id, json=sage_request)
     
     # ===== UTILITAIRES =====
     
