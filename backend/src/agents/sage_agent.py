@@ -206,9 +206,14 @@ class SageAgentManager:
                 1. Analysez la demande de l'utilisateur
                 2. Si la demande concerne un document (analyse, extraction, import), utilisez d'abord les outils de traitement de documents appropriés
                 3. Utilisez ensuite les outils Sage nécessaires pour répondre à la demande
-                4. Fournissez une réponse complète et professionnelle
-                5. Si vous créez ou modifiez des données, confirmez les actions effectuées
-                6. Si vous analysez des documents, fournissez un résumé des données extraites et leur qualité
+                4. IMPORTANT: Si la demande implique une CRÉATION, MODIFICATION ou SUPPRESSION dans Sage (clients, factures, produits, etc.), 
+                   NE PAS exécuter l'action immédiatement. Au lieu de cela:
+                   - Préparez le plan d'action détaillé
+                   - Expliquez exactement ce que vous allez faire
+                   - Terminez votre réponse par: "PLANNED_ACTION: [type:create_client/create_invoice/etc.] [description:détails de l'action]"
+                5. Pour les demandes de CONSULTATION (lister, afficher, rechercher), utilisez directement les outils Sage sans demander confirmation
+                6. Fournissez une réponse complète et professionnelle
+                7. Si vous analysez des documents, fournissez un résumé des données extraites et leur qualité
                 
                 Répondez de manière claire et structurée en français.
                 """,
@@ -224,7 +229,13 @@ class SageAgentManager:
             )
             
             result = crew.kickoff()
-            return str(result)
+            result_str = str(result)
+            
+            # Check if the agent planned an action instead of executing it
+            if "PLANNED_ACTION:" in result_str:
+                return self.parse_planned_action(result_str)
+            
+            return result_str
             
         except Exception as e:
             error_msg = f"Erreur lors du traitement de votre demande: {str(e)}. Veuillez réessayer ou reformuler votre question."
@@ -352,6 +363,105 @@ class SageAgentManager:
     def is_available(self) -> bool:
         """Check if agents are available"""
         return self.agents_available and len(self.agents) > 0
+    
+    def parse_planned_action(self, result_str: str) -> dict:
+        """Parse the agent response to extract planned action details"""
+        import re
+        
+        # Find the PLANNED_ACTION marker
+        action_match = re.search(r'PLANNED_ACTION:\s*\[type:(.*?)\]\s*\[description:(.*?)\]', result_str)
+        
+        if action_match:
+            action_type = action_match.group(1).strip()
+            action_description = action_match.group(2).strip()
+            
+            # Extract the main response (everything before PLANNED_ACTION)
+            main_response = result_str.split('PLANNED_ACTION:')[0].strip()
+            
+            # Extract details if possible
+            details = self.extract_action_details(main_response, action_type)
+            
+            return {
+                'response': main_response,
+                'agent_type': 'comptable_with_confirmation',
+                'capabilities_used': ['analysis', 'sage_planning'],
+                'success': True,
+                'planned_action': {
+                    'type': action_type,
+                    'description': action_description,
+                    'details': details
+                }
+            }
+        
+        # Fallback if parsing fails
+        return {
+            'response': result_str,
+            'agent_type': 'comptable',
+            'capabilities_used': ['analysis'],
+            'success': True
+        }
+    
+    def extract_action_details(self, response: str, action_type: str) -> dict:
+        """Extract specific details from the agent response based on action type"""
+        details = {}
+        
+        response_lower = response.lower()
+        
+        # Extract client details
+        if 'client' in action_type:
+            if 'nom' in response_lower or 'client' in response_lower:
+                # Try to extract client name
+                import re
+                name_patterns = [
+                    r'client[:\s]*([^\n]+)',
+                    r'nom[:\s]*([^\n]+)',
+                    r'pour\s+([A-Za-z\s]+)',
+                ]
+                for pattern in name_patterns:
+                    match = re.search(pattern, response, re.IGNORECASE)
+                    if match:
+                        details['client_name'] = match.group(1).strip()
+                        break
+        
+        # Extract invoice details
+        elif 'invoice' in action_type or 'facture' in action_type:
+            import re
+            # Extract amounts
+            amount_match = re.search(r'(\d+(?:,\d+)?(?:\.\d+)?)\s*€', response)
+            if amount_match:
+                details['amount'] = amount_match.group(1)
+            
+            # Extract client for invoice
+            client_patterns = [
+                r'pour\s+([A-Za-z\s]+)',
+                r'client[:\s]*([^\n]+)',
+            ]
+            for pattern in client_patterns:
+                match = re.search(pattern, response, re.IGNORECASE)
+                if match:
+                    details['client_name'] = match.group(1).strip()
+                    break
+        
+        # Extract product details
+        elif 'product' in action_type or 'produit' in action_type:
+            import re
+            # Extract product name
+            prod_patterns = [
+                r'produit[:\s]*([^\n]+)',
+                r'nom[:\s]*([^\n]+)',
+            ]
+            for pattern in prod_patterns:
+                match = re.search(pattern, response, re.IGNORECASE)
+                if match:
+                    details['product_name'] = match.group(1).strip()
+                    break
+            
+            # Extract price
+            price_match = re.search(r'prix[:\s]*(\d+(?:,\d+)?(?:\.\d+)?)\s*€', response, re.IGNORECASE)
+            if price_match:
+                details['price'] = price_match.group(1)
+        
+        return details
 
 # Classe de compatibilité pour l'ancien code
 class SageAccountingAgent:
