@@ -1,12 +1,15 @@
 import os
 import httpx
 from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from utils.tool_converter import convert_crewai_tools_to_langchain
 
-print("✅ Modern LangChain stack with AgentExecutor imported successfully")
+try:
+    print("✅ Modern LangChain stack with AgentExecutor imported successfully")
+except Exception as e:
+    print(f"❌ Import error in sage_agent: {e}")
 
 from src.tools.sage_tools import SAGE_TOOLS
 from src.tools.document_tools import (
@@ -18,45 +21,52 @@ class SageAgentManager:
     """Gestionnaire des agents IA pour Sage Business Cloud Accounting"""
     
     def __init__(self):
-        # Configuration du modèle LLM avec ChatOpenAI (programmer's approach + my error handling)
-        self.llm = None
-        self.agents_available = False
-        
-        # Modern LangChain 0.2.x configuration (expert's Option A)
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            print("⚠️ OPENAI_API_KEY not found - AI agents will be unavailable")
+        print("🔧 Initializing SageAgentManager...")
+        try:
+            # Configuration du modèle LLM avec ChatOpenAI (programmer's approach + my error handling)
             self.llm = None
-        else:
-            try:
-                base_url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
-                proxy_url = (os.getenv("HTTPS_PROXY")
-                             or os.getenv("HTTP_PROXY")
-                             or os.getenv("ALL_PROXY"))
-                timeout_s = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
-
-                # Modern httpx client with proper proxy configuration (httpx >=0.28.1)
-                if proxy_url:
-                    # Use HTTPTransport with proxy (modern httpx 0.28+ pattern)
-                    transport = httpx.HTTPTransport(proxy=proxy_url)
-                    http_client = httpx.Client(transport=transport, timeout=timeout_s)
-                else:
-                    http_client = httpx.Client(timeout=timeout_s)
-
-                self.llm = ChatOpenAI(
-                    model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-                    api_key=api_key,
-                    base_url=base_url,
-                    http_client=http_client,
-                    temperature=0.1,
-                    max_tokens=2000,
-                )
-                self.agents_available = True
-                print(f"✅ Modern LLM configured (model={os.getenv('OPENAI_MODEL', 'gpt-4o-mini')}, base_url={base_url}, proxy={'yes' if proxy_url else 'no'})")
-                
-            except Exception as e:
-                print(f"❌ Error configuring modern LLM: {e}")
+            self.agents_available = False
+            
+            # Modern LangChain 0.3.x configuration (expert's Option A)
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                print("⚠️ OPENAI_API_KEY not found - AI agents will be unavailable")
                 self.llm = None
+            else:
+                try:
+                    base_url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+                    proxy_url = (os.getenv("HTTPS_PROXY")
+                                 or os.getenv("HTTP_PROXY")
+                                 or os.getenv("ALL_PROXY"))
+                    timeout_s = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
+
+                    # Modern httpx client with proper proxy configuration (httpx >=0.28.1)
+                    if proxy_url:
+                        # Use HTTPTransport with proxy (modern httpx 0.28+ pattern)
+                        transport = httpx.HTTPTransport(proxy=proxy_url)
+                        http_client = httpx.Client(transport=transport, timeout=timeout_s)
+                    else:
+                        http_client = httpx.Client(timeout=timeout_s)
+
+                    self.llm = ChatOpenAI(
+                        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                        api_key=api_key,
+                        base_url=base_url,
+                        http_client=http_client,
+                        temperature=0.1,
+                        max_tokens=2000,
+                    )
+                    self.agents_available = True
+                    print(f"✅ Modern LLM configured (model={os.getenv('OPENAI_MODEL', 'gpt-4o-mini')}, base_url={base_url}, proxy={'yes' if proxy_url else 'no'})")
+                    
+                except Exception as e:
+                    print(f"❌ Error configuring modern LLM: {e}")
+                    self.llm = None
+                    
+        except Exception as e:
+            print(f"❌ Error initializing SageAgentManager: {e}")
+            self.llm = None
+            self.agents_available = False
         
         # Initialiser les outils Sage (utiliser la liste existante)
         self.sage_tools = SAGE_TOOLS
