@@ -104,6 +104,15 @@ opencv-python-headless>=4.8.0
 pytesseract>=0.3.10
 ```
 
+### 12. **Missing PDF Processing Dependencies** ❌→✅
+**Problem:** `ModuleNotFoundError: No module named 'pdfplumber'` in PDF processor
+**Fix:** Added PDF dependencies to requirements.txt and graceful handling:
+```txt
+pdfplumber>=0.9.0
+PyPDF2>=3.0.0
+chardet>=5.0.0
+```
+
 ## 📋 Additional Improvements
 
 ### Debug Tools Added

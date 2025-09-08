@@ -35,3 +35,9 @@ Pillow>=10.0.0
 opencv-python-headless>=4.8.0
 pytesseract>=0.3.10
 # Note: numpy already specified above for CrewAI compatibility
+
+# Document processing dependencies
+pdfplumber>=0.9.0
+PyPDF2>=3.0.0
+chardet>=5.0.0
+# Note: pandas already specified above for data processing

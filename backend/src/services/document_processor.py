@@ -5,7 +5,14 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 from src.models.document import Document
 from src.models.user import db
-from src.services.pdf_processor import PDFProcessor
+# Graceful import for PDF processor
+try:
+    from src.services.pdf_processor import PDFProcessor, PDF_PROCESSING_AVAILABLE
+    PDF_PROCESSOR_AVAILABLE = True
+except ImportError:
+    PDFProcessor = None
+    PDF_PROCESSING_AVAILABLE = False
+    PDF_PROCESSOR_AVAILABLE = False
 from src.services.csv_processor import CSVProcessor
 from src.services.excel_processor import ExcelProcessor
 from src.services.invoice_extractor import InvoiceExtractor
@@ -28,10 +35,15 @@ class DocumentProcessor:
     
     def __init__(self):
         self.processors = {
-            'pdf': PDFProcessor(),
             'csv': CSVProcessor(),
             'excel': ExcelProcessor()
         }
+        
+        # Add PDF processor only if available
+        if PDF_PROCESSOR_AVAILABLE and PDFProcessor:
+            self.processors['pdf'] = PDFProcessor()
+        else:
+            logger.warning("PDF processor not available - PDF processing will be skipped")
         
         # Add image processor only if available
         if IMAGE_PROCESSOR_AVAILABLE and ImageProcessor:

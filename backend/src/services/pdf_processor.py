@@ -1,11 +1,27 @@
 import os
 import logging
 from typing import Optional, Dict, Any
-import pdfplumber
-import PyPDF2
 from io import BytesIO
 
+# Graceful imports for PDF processing dependencies
+try:
+    import pdfplumber
+    PDFPLUMBER_AVAILABLE = True
+except ImportError:
+    PDFPLUMBER_AVAILABLE = False
+    pdfplumber = None
+
+try:
+    import PyPDF2
+    PYPDF2_AVAILABLE = True
+except ImportError:
+    PYPDF2_AVAILABLE = False
+    PyPDF2 = None
+
 logger = logging.getLogger(__name__)
+
+# Check if PDF processing is available
+PDF_PROCESSING_AVAILABLE = PDFPLUMBER_AVAILABLE or PYPDF2_AVAILABLE
 
 class PDFProcessor:
     """Service pour traiter les fichiers PDF"""
@@ -15,6 +31,10 @@ class PDFProcessor:
     
     def extract_text(self, file_path: str) -> Optional[str]:
         """Extrait le texte d'un fichier PDF"""
+        if not PDF_PROCESSING_AVAILABLE:
+            logger.warning("PDF processing dependencies not available (pdfplumber, PyPDF2)")
+            return None
+            
         try:
             # Méthode 1: Utiliser pdfplumber (meilleur pour les tableaux et la mise en forme)
             text = self._extract_with_pdfplumber(file_path)
@@ -32,6 +52,9 @@ class PDFProcessor:
     
     def _extract_with_pdfplumber(self, file_path: str) -> Optional[str]:
         """Extrait le texte avec pdfplumber"""
+        if not PDFPLUMBER_AVAILABLE or not pdfplumber:
+            return None
+            
         try:
             text_content = []
             
@@ -66,6 +89,9 @@ class PDFProcessor:
     
     def _extract_with_pypdf2(self, file_path: str) -> Optional[str]:
         """Extrait le texte avec PyPDF2"""
+        if not PYPDF2_AVAILABLE or not PyPDF2:
+            return None
+            
         try:
             text_content = []
             
