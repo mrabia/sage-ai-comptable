@@ -7,7 +7,9 @@
       "Bash(git commit:*)",
       "Read(//c/Users/MoMo/Downloads/**)",
       "Bash(git tag:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "WebFetch(domain:developer.sage.com)",
+      "Bash(sed:*)"
     ],
     "deny": [],
     "ask": []

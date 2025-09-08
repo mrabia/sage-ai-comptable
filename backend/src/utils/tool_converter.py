@@ -73,12 +73,12 @@ def convert_sage_tools_to_langchain(sage_tools: list) -> list:
         try:
             wrapper = SageToLangChainToolWrapper(tool)
             langchain_tools.append(wrapper)
-            print(f"✅ Converted tool: {wrapper.name}")
+            print(f"Converted tool: {wrapper.name}")
         except Exception as e:
-            print(f"❌ Failed to convert tool {getattr(tool, 'name', 'unknown')}: {e}")
+            print(f"Failed to convert tool {getattr(tool, 'name', 'unknown')}: {e}")
             continue
     
-    print(f"✅ Converted {len(langchain_tools)}/{len(sage_tools)} tools successfully")
+    print(f"Converted {len(langchain_tools)}/{len(sage_tools)} tools successfully")
     return langchain_tools
 
 # Backward compatibility alias
