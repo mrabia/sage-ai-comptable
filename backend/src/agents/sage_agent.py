@@ -48,20 +48,42 @@ class SageAgentManager:
                     print("✅ LLM configured successfully")
                 except TypeError as e:
                     if "proxies" in str(e):
-                        print(f"⚠️ Proxies argument error detected - trying alternative configuration: {e}")
+                        print(f"⚠️ Proxies argument error detected - trying minimal configuration: {e}")
                         try:
-                            # Retry without any potentially problematic kwargs
-                            self.llm = ChatOpenAI(
+                            # Use OpenAI client directly to bypass potential CrewAI interference
+                            from openai import OpenAI
+                            
+                            # Create a minimal wrapper that mimics ChatOpenAI interface
+                            class MinimalChatOpenAI:
+                                def __init__(self, model, api_key, base_url=None, temperature=0.1, max_tokens=2000):
+                                    self.client = OpenAI(
+                                        api_key=api_key,
+                                        base_url=base_url or "https://api.openai.com/v1"
+                                    )
+                                    self.model = model
+                                    self.temperature = temperature
+                                    self.max_tokens = max_tokens
+                                
+                                def predict(self, text):
+                                    response = self.client.chat.completions.create(
+                                        model=self.model,
+                                        messages=[{"role": "user", "content": text}],
+                                        temperature=self.temperature,
+                                        max_tokens=self.max_tokens
+                                    )
+                                    return response.choices[0].message.content
+                            
+                            self.llm = MinimalChatOpenAI(
                                 model="gpt-4o-mini",
-                                openai_api_key=api_key,  # Alternative parameter name
-                                openai_api_base=os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
+                                api_key=api_key,
+                                base_url=os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
                                 temperature=0.1,
                                 max_tokens=2000
                             )
                             self.agents_available = True
-                            print("✅ LLM configured successfully (alternative config)")
+                            print("✅ LLM configured successfully (minimal wrapper)")
                         except Exception as e2:
-                            print(f"❌ Alternative LLM config also failed: {e2}")
+                            print(f"❌ Minimal LLM config also failed: {e2}")
                             self.llm = None
                     else:
                         print(f"❌ Error configuring LLM (TypeError): {e}")
