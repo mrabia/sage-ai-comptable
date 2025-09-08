@@ -1,17 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find:*)",
-      "Bash(python:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Read(//c/Users/MoMo/Downloads/**)",
-      "Bash(git tag:*)",
-      "Bash(pip install:*)",
-      "WebFetch(domain:developer.sage.com)",
-      "Bash(sed:*)"
+      "mcp__ruv-swarm",
+      "mcp__claude-flow"
     ],
-    "deny": [],
-    "ask": []
+    "deny": []
   }
 }

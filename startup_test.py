@@ -6,7 +6,7 @@ Simple startup test to debug Railway deployment issues
 import sys
 import os
 
-print("🔍 Railway Startup Debug Test")
+print("Railway Startup Debug Test")
 print("=" * 40)
 
 # Test 1: Python version
@@ -33,36 +33,36 @@ for root, dirs, files in os.walk("."):
         print(f"{subindent}... and {len(files) - 5} more files")
 
 # Test 5: Critical imports
-print("\n🧪 Testing critical imports:")
+print("\nTesting critical imports:")
 try:
     import flask
-    print(f"✅ Flask version: {flask.__version__}")
+    print(f"[OK] Flask version: {flask.__version__}")
 except ImportError as e:
-    print(f"❌ Flask import failed: {e}")
+    print(f"[FAIL] Flask import failed: {e}")
 
 try:
     import sqlalchemy
-    print(f"✅ SQLAlchemy version: {sqlalchemy.__version__}")
+    print(f"[OK] SQLAlchemy version: {sqlalchemy.__version__}")
 except ImportError as e:
-    print(f"❌ SQLAlchemy import failed: {e}")
+    print(f"[FAIL] SQLAlchemy import failed: {e}")
 
 try:
     from src.models.user import db
-    print("✅ User models imported successfully")
+    print("[OK] User models imported successfully")
 except ImportError as e:
-    print(f"❌ User models import failed: {e}")
+    print(f"[FAIL] User models import failed: {e}")
 
 try:
     from src.routes.auth import auth_bp
-    print("✅ Auth routes imported successfully")
+    print("[OK] Auth routes imported successfully")
 except ImportError as e:
-    print(f"❌ Auth routes import failed: {e}")
+    print(f"[FAIL] Auth routes import failed: {e}")
 
 # Test 6: AI components (optional)
 try:
     from src.agents.sage_agent import SageAgentManager
-    print("✅ AI Agent components available")
+    print("[OK] AI Agent components available")
 except ImportError as e:
-    print(f"⚠️ AI components not available: {e}")
+    print(f"[WARN] AI components not available: {e}")
 
-print("\n✨ Startup test completed")
+print("\nStartup test completed")
