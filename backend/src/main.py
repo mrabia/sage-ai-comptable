@@ -215,7 +215,6 @@ except ImportError as e:
             }), 200
     
     @ai_agent_bp.route('/agent/chat', methods=['POST', 'OPTIONS'])
-    @jwt_required(optional=True)  # Make JWT optional but available
     def ai_chat_disabled():
         if request.method == 'OPTIONS':
             return jsonify({}), 200
