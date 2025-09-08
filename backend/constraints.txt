@@ -1,0 +1,8 @@
+# Keep httpx post-0.28 for proxy API, but under 1.0 until OpenAI declares it safe
+httpx>=0.28.1,<1.0
+# Ensure a matching tokeniser line for langchain-openai
+tiktoken>=0.7,<1
+# Stable anyio/sniffio/httpcore under httpx 0.28.x
+anyio>=4.4,<5
+httpcore>=1.0.5,<1.1
+sniffio>=1.3,<2

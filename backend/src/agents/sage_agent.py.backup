@@ -1,9 +1,21 @@
 import os
 import httpx
-from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
+from crewai import Agent, Task, Crew
 
-print("✅ Modern LangChain stack imported successfully")
+# Import ChatOpenAI with fallback (using programmer's clean approach + my error handling)
+try:
+    from langchain_openai import ChatOpenAI
+    LLM_AVAILABLE = True
+    print("✅ ChatOpenAI imported successfully")
+except ImportError:
+    try:
+        from langchain.chat_models import ChatOpenAI
+        LLM_AVAILABLE = True
+        print("✅ ChatOpenAI imported successfully (fallback)")
+    except ImportError:
+        ChatOpenAI = None
+        LLM_AVAILABLE = False
+        print("❌ ChatOpenAI not available - OpenAI features will be disabled")
 
 from src.tools.sage_tools import SAGE_TOOLS
 from src.tools.document_tools import (
@@ -19,41 +31,58 @@ class SageAgentManager:
         self.llm = None
         self.agents_available = False
         
-        # Modern LangChain 0.2.x configuration (expert's Option A)
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            print("⚠️ OPENAI_API_KEY not found - AI agents will be unavailable")
-            self.llm = None
+        if LLM_AVAILABLE and ChatOpenAI:
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                print("⚠️ OPENAI_API_KEY not found - AI agents will be unavailable")
+            else:
+                try:
+                    base_url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+                    proxy_url = (os.getenv("HTTPS_PROXY")
+                                 or os.getenv("HTTP_PROXY")
+                                 or os.getenv("ALL_PROXY"))
+                    timeout_s = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
+
+                    # Try expert solution (http_client) first for langchain 0.1.x compatibility
+                    try:
+                        http_client = httpx.Client(
+                            proxies=proxy_url if proxy_url else None,
+                            timeout=timeout_s,
+                        )
+
+                        self.llm = ChatOpenAI(
+                            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                            api_key=api_key,
+                            base_url=base_url,
+                            http_client=http_client,
+                            temperature=0.1,
+                            max_tokens=2000,
+                        )
+                        self.agents_available = True
+                        print(f"✅ LLM configured with http_client (model={os.getenv('OPENAI_MODEL', 'gpt-4o-mini')}, base_url={base_url})")
+                    
+                    except Exception as http_client_error:
+                        # Fallback: langchain 0.1.x might not support http_client
+                        print(f"⚠️ http_client not supported, trying fallback: {http_client_error}")
+                        try:
+                            self.llm = ChatOpenAI(
+                                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                                api_key=api_key,
+                                base_url=base_url,
+                                temperature=0.1,
+                                max_tokens=2000,
+                            )
+                            self.agents_available = True
+                            print(f"✅ LLM configured without proxy (model={os.getenv('OPENAI_MODEL', 'gpt-4o-mini')}, base_url={base_url})")
+                        except Exception as fallback_error:
+                            print(f"❌ All LLM configurations failed: {fallback_error}")
+                            self.llm = None
+                            
+                except Exception as e:
+                    print(f"❌ Error configuring LLM: {e}")
+                    self.llm = None
         else:
-            try:
-                base_url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
-                proxy_url = (os.getenv("HTTPS_PROXY")
-                             or os.getenv("HTTP_PROXY")
-                             or os.getenv("ALL_PROXY"))
-                timeout_s = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
-
-                # Modern httpx client with proper proxy configuration (httpx >=0.28.1)
-                if proxy_url:
-                    # Use HTTPTransport with proxy (modern httpx 0.28+ pattern)
-                    transport = httpx.HTTPTransport(proxy=proxy_url)
-                    http_client = httpx.Client(transport=transport, timeout=timeout_s)
-                else:
-                    http_client = httpx.Client(timeout=timeout_s)
-
-                self.llm = ChatOpenAI(
-                    model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-                    api_key=api_key,
-                    base_url=base_url,
-                    http_client=http_client,
-                    temperature=0.1,
-                    max_tokens=2000,
-                )
-                self.agents_available = True
-                print(f"✅ Modern LLM configured (model={os.getenv('OPENAI_MODEL', 'gpt-4o-mini')}, base_url={base_url}, proxy={'yes' if proxy_url else 'no'})")
-                
-            except Exception as e:
-                print(f"❌ Error configuring modern LLM: {e}")
-                self.llm = None
+            print("❌ ChatOpenAI not available - AI agents will be unavailable")
         
         # Initialiser les outils Sage (utiliser la liste existante)
         self.sage_tools = SAGE_TOOLS
@@ -67,41 +96,50 @@ class SageAgentManager:
             DocumentValidationTool()
         ]
         
-        # Configurer les prompts système pour différents types d'agents (sans CrewAI)
+        # Créer les agents spécialisés seulement si LLM disponible
         if self.agents_available:
-            self.system_prompts = self._create_system_prompts()
-            print("✅ AI system prompts configured successfully")
+            self.agents = self._create_agents()
+            print("✅ AI agents created successfully")
         else:
-            self.system_prompts = {}
-            print("❌ AI system not configured - LLM unavailable")
+            self.agents = {}
+            print("❌ AI agents not created - LLM unavailable")
     
-    def _create_system_prompts(self):
-        """Crée les prompts système pour différents types d'agents (sans CrewAI)"""
+    def _create_agents(self):
+        """Crée les agents spécialisés"""
         
         if not self.llm:
-            print("❌ Cannot create system prompts - LLM not available")
+            print("❌ Cannot create agents - LLM not available")
             return {}
         
         try:
-            # Prompt pour l'Assistant Comptable Expert
-            comptable_prompt = """Vous êtes un assistant comptable expert avec une connaissance approfondie de Sage Business Cloud Accounting. 
-            Vous excellez dans la gestion des clients, fournisseurs, factures, et produits. Vous savez également analyser des documents 
-            (factures PDF, images, fichiers CSV/Excel) pour extraire automatiquement les données comptables et les intégrer dans Sage.
-            
-            Vos spécialités incluent:
-            - Création et gestion des fiches clients et fournisseurs
-            - Saisie et traitement des factures
-            - Gestion du catalogue produits
-            - Analyse automatique de documents comptables
-            - Import en masse de données depuis des fichiers
+            # Agent Comptable - Gestion des opérations comptables de base + documents
+            comptable_agent = Agent(
+                role="Assistant Comptable Expert",
+                goal="Gérer les opérations comptables courantes, analyser les documents et automatiser la saisie de données dans Sage Business Cloud Accounting",
+                backstory="""Vous êtes un assistant comptable expert avec une connaissance approfondie de Sage Business Cloud Accounting. 
+                Vous excellez dans la gestion des clients, fournisseurs, factures, et produits. Vous savez également analyser des documents 
+                (factures PDF, images, fichiers CSV/Excel) pour extraire automatiquement les données comptables et les intégrer dans Sage.
+                
+                Vos spécialités incluent:
+                - Création et gestion des fiches clients et fournisseurs
+                - Saisie et traitement des factures
+                - Gestion du catalogue produits
+                - Analyse automatique de documents comptables
+                - Import en masse de données depuis des fichiers
                 - Validation et contrôle de cohérence des données
                 
-                Vous communiquez de manière claire et professionnelle, en expliquant chaque étape de vos actions.
-                
-                IMPORTANT: Utilisez les outils Sage disponibles pour effectuer des actions réelles dans le système."""
+                Vous communiquez de manière claire et professionnelle, en expliquant chaque étape de vos actions.""",
+                verbose=True,
+                allow_delegation=False,
+                tools=self.sage_tools + self.document_tools,
+                llm=self.llm
+            )
             
-            # Prompt pour l'Analyste Financier Senior
-            analyste_prompt = """Vous êtes un analyste financier senior spécialisé dans l'interprétation des données comptables de Sage Business Cloud Accounting.
+            # Agent Analyste Financier - Rapports et analyses + validation de documents
+            analyste_agent = Agent(
+                role="Analyste Financier Senior",
+                goal="Produire des analyses financières approfondies, des rapports comptables et valider la qualité des données extraites de documents",
+                backstory="""Vous êtes un analyste financier senior spécialisé dans l'interprétation des données comptables de Sage Business Cloud Accounting.
                 Vous excellez dans la production de rapports financiers, l'analyse de performance et la validation de données.
                 
                 Vos compétences incluent:
@@ -113,12 +151,18 @@ class SageAgentManager:
                 - Détection d'incohérences et recommandations d'amélioration
                 - Conseil en optimisation fiscale et gestion de la TVA
                 
-                Vous présentez vos analyses de manière structurée avec des recommandations concrètes.
-                
-                IMPORTANT: Utilisez les outils Sage disponibles pour accéder aux données réelles."""
+                Vous présentez vos analyses de manière structurée avec des recommandations concrètes.""",
+                verbose=True,
+                allow_delegation=False,
+                tools=self.sage_tools + [DocumentValidationTool(), DocumentAnalysisTool()],
+                llm=self.llm
+            )
             
-            # Prompt pour l'Expert Support Sage
-            support_prompt = """Vous êtes un expert en support technique et formation pour Sage Business Cloud Accounting.
+            # Agent Support - Aide utilisateur et formation + assistance documents
+            support_agent = Agent(
+                role="Expert Support Sage",
+                goal="Fournir une assistance complète aux utilisateurs de Sage Business Cloud Accounting et les aider avec le traitement de documents",
+                backstory="""Vous êtes un expert en support technique et formation pour Sage Business Cloud Accounting.
                 Vous aidez les utilisateurs à comprendre et utiliser efficacement le système, y compris les nouvelles fonctionnalités de traitement de documents.
                 
                 Vos domaines d'expertise:
@@ -130,26 +174,29 @@ class SageAgentManager:
                 - Optimisation des workflows
                 - Assistance pour l'import et l'export de données
                 
-                Vous êtes patient, pédagogue et vous adaptez vos explications au niveau de l'utilisateur.
-                
-                IMPORTANT: Utilisez les outils Sage disponibles pour démontrer les fonctionnalités."""
+                Vous êtes patient, pédagogue et vous adaptez vos explications au niveau de l'utilisateur.""",
+                verbose=True,
+                allow_delegation=False,
+                tools=[DocumentAnalysisTool(), DocumentValidationTool()] + self.sage_tools[:3],  # Outils de base
+                llm=self.llm
+            )
             
             return {
-                'comptable': comptable_prompt,
-                'analyste': analyste_prompt,
-                'support': support_prompt
+                'comptable': comptable_agent,
+                'analyste': analyste_agent,
+                'support': support_agent
             }
             
         except Exception as e:
-            print(f"❌ Error creating system prompts: {e}")
+            print(f"❌ Error creating agents: {e}")
             return {}
     
     def process_user_request(self, user_message: str, user_id: int = None, conversation_context: list = None) -> str:
-        """Traite une demande utilisateur avec LangChain moderne (sans CrewAI)"""
+        """Traite une demande utilisateur et détermine l'agent approprié"""
         
-        # Check if LLM is available
-        if not self.agents_available or not self.llm:
-            return "❌ L'agent IA n'est pas disponible. Veuillez vérifier que la clé OpenAI API est configurée."
+        # Check if agents are available
+        if not self.agents_available or not self.agents:
+            return "❌ Les agents IA ne sont pas disponibles. Veuillez vérifier que la clé OpenAI API est configurée et que les dépendances CrewAI sont installées."
         
         try:
             # Récupérer les credentials Sage de l'utilisateur
@@ -171,47 +218,51 @@ class SageAgentManager:
                 except Exception as e:
                     print(f"Warning: Could not set Sage credentials: {e}")
             
-            # Analyser le message pour déterminer le type d'agent approprié
+            # Analyser le message pour déterminer l'agent approprié
             agent_type = self._determine_agent_type(user_message)
-            system_prompt = self.system_prompts.get(agent_type, self.system_prompts.get('comptable'))
+            selected_agent = self.agents.get(agent_type)
             
-            if not system_prompt:
-                return f"❌ Prompt système '{agent_type}' non disponible."
+            if not selected_agent:
+                return f"❌ Agent '{agent_type}' non disponible."
             
             # Créer le contexte de la tâche avec les credentials
             task_context = self._build_task_context(user_message, conversation_context, user_id, sage_credentials)
             
-            # Construire le prompt complet avec système + contexte + demande utilisateur
-            full_prompt = f"""{system_prompt}
+            # Créer la tâche
+            task = Task(
+                description=f"""
+                Contexte utilisateur: {task_context}
+                
+                Demande: {user_message}
+                
+                Instructions:
+                1. Analysez la demande de l'utilisateur
+                2. Si la demande concerne un document (analyse, extraction, import), utilisez d'abord les outils de traitement de documents appropriés
+                3. Utilisez ensuite les outils Sage nécessaires pour répondre à la demande
+                4. IMPORTANT: Si la demande implique une CRÉATION, MODIFICATION ou SUPPRESSION dans Sage (clients, factures, produits, etc.), 
+                   NE PAS exécuter l'action immédiatement. Au lieu de cela:
+                   - Préparez le plan d'action détaillé
+                   - Expliquez exactement ce que vous allez faire
+                   - Terminez votre réponse par: "PLANNED_ACTION: [type:create_client/create_invoice/etc.] [description:détails de l'action]"
+                5. Pour les demandes de CONSULTATION (lister, afficher, rechercher), utilisez directement les outils Sage sans demander confirmation
+                6. Fournissez une réponse complète et professionnelle
+                7. Si vous analysez des documents, fournissez un résumé des données extraites et leur qualité
+                
+                Répondez de manière claire et structurée en français.
+                """,
+                agent=selected_agent,
+                expected_output="Une réponse complète et professionnelle à la demande de l'utilisateur, avec confirmation des actions effectuées."
+            )
             
-            Contexte utilisateur: {task_context}
+            # Créer et exécuter l'équipe
+            crew = Crew(
+                agents=[selected_agent],
+                tasks=[task],
+                verbose=True
+            )
             
-            Demande: {user_message}
-            
-            Instructions:
-            1. Analysez la demande de l'utilisateur
-            2. Si la demande concerne un document (analyse, extraction, import), utilisez d'abord les outils de traitement de documents appropriés
-            3. Utilisez ensuite les outils Sage nécessaires pour répondre à la demande
-            4. IMPORTANT: Si la demande implique une CRÉATION, MODIFICATION ou SUPPRESSION dans Sage (clients, factures, produits, etc.), 
-               NE PAS exécuter l'action immédiatement. Au lieu de cela:
-               - Préparez le plan d'action détaillé
-               - Expliquez exactement ce que vous allez faire
-               - Terminez votre réponse par: "PLANNED_ACTION: [type:create_client/create_invoice/etc.] [description:détails de l'action]"
-            5. Pour les demandes de CONSULTATION (lister, afficher, rechercher), utilisez directement les outils Sage sans demander confirmation
-            6. Fournissez une réponse complète et professionnelle
-            7. Si vous analysez des documents, fournissez un résumé des données extraites et leur qualité
-            
-            Répondez de manière claire et structurée en français.
-            """
-            
-            # Appel direct à LangChain (moderne, sans CrewAI)
-            messages = [
-                SystemMessage(content=full_prompt),
-                HumanMessage(content=user_message)
-            ]
-            
-            result = self.llm.invoke(messages)
-            result_str = result.content
+            result = crew.kickoff()
+            result_str = str(result)
             
             # Check if the agent planned an action instead of executing it
             if "PLANNED_ACTION:" in result_str:

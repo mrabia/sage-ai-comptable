@@ -37,7 +37,7 @@ COPY backend/requirements.txt ./backend/
 WORKDIR /app/backend
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install numpy==1.24.3 --no-cache-dir
-RUN pip install -r requirements.txt --no-cache-dir
+RUN pip install -r requirements.txt -c constraints.txt --no-cache-dir
 
 # Install frontend dependencies
 WORKDIR /app/frontend  

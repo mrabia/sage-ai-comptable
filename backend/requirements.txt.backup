@@ -17,12 +17,13 @@ pandas>=2.0.0,<3.0.0
 openpyxl>=3.1.0
 PyPDF2>=3.0.0
 
-# --- AI core (LangChain only; CrewAI removed to avoid version locks) ---
-langchain==0.2.17
-langchain-openai==0.2.14
-# httpx >=0.28 removed `proxies=`; OpenAI >=1.55.3 adapted.
-openai>=1.55.3,<2.0
-httpx>=0.28.1,<1.0
+# AI/ML packages — compatible matrix for crewai==0.28.8
+crewai==0.28.8
+crewai-tools==0.1.7
+langchain==0.1.20
+langchain-openai==0.1.7
+openai==1.39.0
+httpx>=0.27,<0.29
 pydantic>=2.6,<3
 
 # Database
