@@ -274,15 +274,15 @@ const ChatPage = () => {
           </div>
         ) : (
           messages.map((message, index) => (
-            <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`flex space-x-3 max-w-3xl ${message.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+            <div key={index} className={`flex ${message.is_from_user ? 'justify-end' : 'justify-start'}`}>
+              <div className={`flex space-x-3 max-w-3xl ${message.is_from_user ? 'flex-row-reverse space-x-reverse' : ''}`}>
                 {/* Avatar */}
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  message.role === 'user' 
+                  message.is_from_user 
                     ? 'bg-blue-600' 
                     : 'bg-gray-600'
                 }`}>
-                  {message.role === 'user' ? (
+                  {message.is_from_user ? (
                     <User className="w-5 h-5 text-white" />
                   ) : (
                     <Bot className="w-5 h-5 text-white" />
@@ -291,7 +291,7 @@ const ChatPage = () => {
 
                 {/* Message */}
                 <div className={`rounded-lg px-4 py-3 ${
-                  message.role === 'user'
+                  message.is_from_user
                     ? 'bg-blue-600 text-white'
                     : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700'
                 }`}>
@@ -301,11 +301,11 @@ const ChatPage = () => {
                   
                   {/* Timestamp */}
                   <div className={`text-xs mt-2 ${
-                    message.role === 'user' 
+                    message.is_from_user 
                       ? 'text-blue-100' 
                       : 'text-gray-500 dark:text-gray-400'
                   }`}>
-                    {new Date(message.timestamp).toLocaleTimeString()}
+                    {message.created_at ? new Date(message.created_at).toLocaleTimeString() : ''}
                   </div>
                 </div>
               </div>

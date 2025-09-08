@@ -48,35 +48,150 @@ except ImportError as e:
         return jsonify({'error': 'AI functionality is temporarily unavailable', 'ai_enabled': False}), 503
     
     def ai_chat_fallback_response():
-        # Get user message from request
-        data = request.get_json() if request.is_json else {}
-        user_message = data.get('message', '').lower()
+        from flask_jwt_extended import jwt_required, get_jwt_identity
+        from src.models.user import User
+        from src.services.sage_api import SageAPIService  
+        from src.services.sage_auth import SageOAuth2Service
+        import os
         
-        # Simple keyword-based responses for common Sage operations
-        if any(word in user_message for word in ['client', 'customer']):
-            response = "Pour gérer vos clients, utilisez les outils Sage disponibles dans l'interface. Vous pouvez consulter la liste des clients ou en créer de nouveaux via les actions rapides."
-        elif any(word in user_message for word in ['facture', 'invoice']):
-            response = "Pour gérer vos factures, accédez aux outils de facturation Sage. Vous pouvez créer, consulter et gérer vos factures directement."
-        elif any(word in user_message for word in ['bilan', 'balance']):
-            response = "Pour consulter votre bilan comptable, utilisez l'outil de reporting Sage disponible dans les actions rapides."
-        elif any(word in user_message for word in ['fournisseur', 'supplier']):
-            response = "Pour gérer vos fournisseurs, utilisez les outils de gestion des fournisseurs Sage via les actions rapides."
-        else:
-            response = "L'agent IA n'est pas disponible actuellement. Cependant, avec Sage connecté, vous pouvez utiliser les actions rapides pour gérer vos données comptables : clients, factures, bilan, fournisseurs, etc."
-        
-        return jsonify({
-            'response': response,
-            'ai_enabled': False,
-            'sage_connected': True,
-            'suggestions': [
-                "Afficher les clients",
-                "Voir les factures récentes", 
-                "Consulter le bilan comptable",
-                "Gérer les fournisseurs"
-            ]
-        }), 200
+        try:
+            # Get user message from request
+            data = request.get_json() if request.is_json else {}
+            user_message = data.get('message', '').lower()
+            
+            # Get current user (if authenticated)
+            user_id = None
+            sage_connected = False
+            sage_api = None
+            
+            try:
+                # Try to get authenticated user
+                user_id = get_jwt_identity() 
+                if user_id:
+                    user = User.query.get(int(user_id))
+                    if user:
+                        credentials = user.get_sage_credentials()
+                        if credentials:
+                            sage_connected = True
+                            # Initialize Sage API service
+                            SAGE_CLIENT_ID = os.getenv('SAGE_CLIENT_ID', 'your_sage_client_id')
+                            SAGE_CLIENT_SECRET = os.getenv('SAGE_CLIENT_SECRET', 'your_sage_client_secret')
+                            SAGE_REDIRECT_URI = os.getenv('SAGE_REDIRECT_URI', 'http://localhost:5000/api/sage/callback')
+                            
+                            sage_oauth = SageOAuth2Service(SAGE_CLIENT_ID, SAGE_CLIENT_SECRET, SAGE_REDIRECT_URI)
+                            sage_api = SageAPIService(sage_oauth)
+                            sage_api.set_credentials(credentials)
+            except:
+                # If not authenticated or error, continue with basic response
+                pass
+            
+            # Process user request with actual Sage API calls if possible
+            if sage_connected and sage_api:
+                # Handle client-related queries
+                if any(word in user_message for word in ['client', 'customer', 'liste']):
+                    try:
+                        customers_result = sage_api.get_customers()
+                        if customers_result and 'items' in customers_result:
+                            customers = customers_result['items'][:5]  # Show first 5
+                            if customers:
+                                response = f"Voici vos {len(customers)} premiers clients :\n\n"
+                                for i, customer in enumerate(customers, 1):
+                                    name = customer.get('displayed_as', 'N/A')
+                                    response += f"{i}. {name}\n"
+                                response += f"\nTotal trouvé: {len(customers_result.get('items', []))}"
+                            else:
+                                response = "Aucun client trouvé dans votre base Sage."
+                        else:
+                            response = "Impossible de récupérer la liste des clients pour le moment."
+                    except Exception as e:
+                        response = f"Erreur lors de la récupération des clients: {str(e)}"
+                
+                # Handle balance sheet queries  
+                elif any(word in user_message for word in ['bilan', 'balance']):
+                    try:
+                        balance_result = sage_api.get_balance_sheet()
+                        if balance_result:
+                            response = "📊 Bilan comptable:\n\n"
+                            # Simplify balance sheet display
+                            if 'profit_and_loss' in balance_result:
+                                response += "Résultats disponibles dans Sage."
+                            else:
+                                response += "Bilan comptable récupéré avec succès."
+                        else:
+                            response = "Impossible de récupérer le bilan pour le moment."
+                    except Exception as e:
+                        response = f"Erreur lors de la récupération du bilan: {str(e)}"
+                
+                # Handle invoice queries
+                elif any(word in user_message for word in ['facture', 'invoice']):
+                    try:
+                        invoices_result = sage_api.get_invoices()
+                        if invoices_result and 'items' in invoices_result:
+                            invoices = invoices_result['items'][:3]  # Show first 3
+                            if invoices:
+                                response = f"Vos {len(invoices)} dernières factures :\n\n"
+                                for i, invoice in enumerate(invoices, 1):
+                                    ref = invoice.get('reference', 'N/A')
+                                    amount = invoice.get('total_amount', 'N/A') 
+                                    response += f"{i}. Facture {ref} - {amount}€\n"
+                            else:
+                                response = "Aucune facture trouvée."
+                        else:
+                            response = "Impossible de récupérer les factures pour le moment."
+                    except Exception as e:
+                        response = f"Erreur lors de la récupération des factures: {str(e)}"
+                
+                else:
+                    response = "Je peux vous aider avec vos données Sage. Demandez-moi la liste des clients, le bilan comptable, ou les factures récentes."
+            
+            else:
+                # No Sage connection - provide guidance
+                if any(word in user_message for word in ['client', 'customer']):
+                    response = "Pour voir la liste des clients, connectez-vous à Sage d'abord via le bouton 'Connecter Sage'."
+                elif any(word in user_message for word in ['bilan', 'balance']):  
+                    response = "Pour consulter le bilan, connectez-vous à Sage d'abord."
+                elif any(word in user_message for word in ['facture', 'invoice']):
+                    response = "Pour voir les factures, connectez-vous à Sage d'abord."
+                else:
+                    response = "L'agent IA n'est pas disponible. Pour accéder aux données Sage, connectez-vous d'abord via le bouton 'Connecter Sage'."
+            
+            from datetime import datetime
+            
+            return jsonify({
+                'response': response,
+                'conversation_id': None,  # No conversation tracking in fallback
+                'message_id': int(datetime.now().timestamp() * 1000),  # Generate a timestamp-based ID
+                'timestamp': datetime.now().isoformat(),
+                'agent_type': 'sage_fallback',
+                'capabilities_used': ['sage_api'] if sage_connected else [],
+                'success': True,
+                'ai_enabled': False,
+                'sage_connected': sage_connected,
+                'suggestions': [
+                    "Afficher les clients",
+                    "Voir les factures récentes", 
+                    "Consulter le bilan comptable",
+                    "Gérer les fournisseurs"
+                ] if sage_connected else ["Connecter Sage d'abord"]
+            }), 200
+            
+        except Exception as e:
+            from datetime import datetime
+            
+            return jsonify({
+                'response': f"Erreur lors du traitement de votre demande: {str(e)}",
+                'conversation_id': None,
+                'message_id': int(datetime.now().timestamp() * 1000),
+                'timestamp': datetime.now().isoformat(),
+                'agent_type': 'sage_fallback',
+                'capabilities_used': [],
+                'success': False,
+                'ai_enabled': False,
+                'sage_connected': False
+            }), 200
     
     @ai_agent_bp.route('/agent/chat', methods=['POST', 'OPTIONS'])
+    @jwt_required(optional=True)  # Make JWT optional but available
     def ai_chat_disabled():
         if request.method == 'OPTIONS':
             return jsonify({}), 200
