@@ -8,9 +8,9 @@ from urllib.parse import parse_qs, urlparse
 sage_auth_bp = Blueprint('sage_auth', __name__)
 
 # Configuration OAuth2 Sage (à mettre dans les variables d'environnement)
-SAGE_CLIENT_ID = os.getenv('SAGE_CLIENT_ID', 'a30eb717-392c-c869-1ba3-b799288f0fa2/169eafb3-03eb-4155-afb4-6492fde74f9e')
-SAGE_CLIENT_SECRET = os.getenv('SAGE_CLIENT_SECRET', '@:)!|]d1]-aRH(#]S6p.')
-SAGE_REDIRECT_URI = 'https://latina-diploma-sku-pentium.trycloudflare.com/api/sage/callback'
+SAGE_CLIENT_ID = os.getenv('SAGE_CLIENT_ID', 'your_sage_client_id')
+SAGE_CLIENT_SECRET = os.getenv('SAGE_CLIENT_SECRET', 'your_sage_client_secret')
+SAGE_REDIRECT_URI = os.getenv('SAGE_REDIRECT_URI', 'http://localhost:5000/api/sage/callback')
 
 # Initialiser le service OAuth2
 sage_oauth = SageOAuth2Service(SAGE_CLIENT_ID, SAGE_CLIENT_SECRET, SAGE_REDIRECT_URI)

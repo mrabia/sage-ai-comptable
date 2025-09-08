@@ -16,7 +16,7 @@ import sys
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from flask import Flask, send_from_directory, Blueprint, jsonify
+from flask import Flask, send_from_directory, Blueprint, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from src.models.user import db
@@ -44,13 +44,44 @@ except ImportError as e:
     # Create a dummy blueprint for AI routes
     ai_agent_bp = Blueprint('ai_agent_disabled', __name__)
     
-    @ai_agent_bp.route('/agent/chat', methods=['POST'])
-    def ai_disabled():
-        return {'error': 'AI functionality is temporarily unavailable', 'ai_enabled': False}, 503
+    def ai_disabled_response():
+        return jsonify({'error': 'AI functionality is temporarily unavailable', 'ai_enabled': False}), 503
+    
+    @ai_agent_bp.route('/agent/chat', methods=['POST', 'OPTIONS'])
+    def ai_chat_disabled():
+        if request.method == 'OPTIONS':
+            return jsonify({}), 200
+        return ai_disabled_response()
         
-    @ai_agent_bp.route('/agent/status', methods=['GET'])
+    @ai_agent_bp.route('/agent/status', methods=['GET', 'OPTIONS'])
     def ai_status():
-        return {'ai_enabled': False, 'message': 'AI components not available'}, 200
+        if request.method == 'OPTIONS':
+            return jsonify({}), 200
+        return jsonify({'ai_enabled': False, 'message': 'AI components not available'}), 200
+    
+    @ai_agent_bp.route('/agent/capabilities', methods=['GET', 'OPTIONS'])
+    def ai_capabilities_disabled():
+        if request.method == 'OPTIONS':
+            return jsonify({}), 200
+        return jsonify({'capabilities': [], 'ai_enabled': False, 'message': 'AI components not available'}), 200
+        
+    @ai_agent_bp.route('/agent/suggestions', methods=['GET', 'POST', 'OPTIONS'])
+    def ai_suggestions_disabled():
+        if request.method == 'OPTIONS':
+            return jsonify({}), 200
+        return jsonify({'suggestions': [], 'ai_enabled': False, 'message': 'AI components not available'}), 200
+        
+    @ai_agent_bp.route('/agent/quick-actions', methods=['GET', 'OPTIONS'])  
+    def ai_quick_actions_disabled():
+        if request.method == 'OPTIONS':
+            return jsonify({}), 200
+        return jsonify({'quick_actions': [], 'ai_enabled': False, 'message': 'AI components not available'}), 200
+        
+    @ai_agent_bp.route('/agent/execute-action', methods=['POST', 'OPTIONS'])
+    def ai_execute_action_disabled():
+        if request.method == 'OPTIONS':
+            return jsonify({}), 200
+        return ai_disabled_response()
 except Exception as e:
     logger.error(f"Unexpected error loading AI components: {e}")
     AI_ENABLED = False
