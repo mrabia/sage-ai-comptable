@@ -32,6 +32,7 @@ ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 # Copy package files first for better caching
 COPY frontend/package*.json ./frontend/
 COPY backend/requirements.txt ./backend/
+COPY backend/constraints.txt ./backend/
 
 # Install backend dependencies first  
 WORKDIR /app/backend
