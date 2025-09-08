@@ -4,7 +4,8 @@
       "Bash(find:*)",
       "Bash(python:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Read(//c/Users/MoMo/Downloads/**)"
     ],
     "deny": [],
     "ask": []
