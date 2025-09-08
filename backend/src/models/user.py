@@ -117,7 +117,7 @@ class SageOperation(db.Model):
     operation_type = db.Column(db.String(100), nullable=False)  # 'create_invoice', 'get_balance', etc.
     operation_data = db.Column(db.Text, nullable=False)  # JSON string of operation parameters
     sage_response = db.Column(db.Text, nullable=True)  # JSON string of Sage API response
-    status = db.Column(db.String(50), default='pending')  # 'pending', 'success', 'error'
+    status = db.Column(db.String(50), default='pending')  # 'pending', 'awaiting_confirmation', 'confirmed', 'rejected', 'success', 'error'
     error_message = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, nullable=True)

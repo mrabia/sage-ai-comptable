@@ -1,0 +1,7 @@
+nom,reference,prix,tva,description,categorie
+Consultation technique,CONS001,150.00,20,Consultation technique d'une heure,Services
+Formation développement,FORM001,800.00,20,Formation développement web - journée,Formation
+Licence logiciel Basic,LIC001,89.00,20,Licence mensuelle logiciel Basic,Licences
+Maintenance,MAINT001,250.00,20,Maintenance préventive mensuelle,Services
+Audit sécurité,AUDIT001,1200.00,20,Audit complet de sécurité informatique,Services
+Support Premium,SUP001,50.00,20,Support technique premium par heure,Services

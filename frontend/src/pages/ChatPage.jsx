@@ -4,10 +4,11 @@ import { useChat } from '../contexts/ChatContext';
 import { Send, Bot, User, FileText, Loader2, Sparkles, Calculator, BarChart3, Users, ShoppingCart, CreditCard, TrendingUp } from 'lucide-react';
 import ChatInput from '../components/ChatInput';
 import FilePreview from '../components/FilePreview';
+import ConfirmationDialog from '../components/ConfirmationDialog';
 
 const ChatPage = () => {
   const { user } = useAuth();
-  const { messages, sendMessage, isLoading } = useChat();
+  const { messages, sendMessage, isLoading, pendingConfirmation, confirmOperation } = useChat();
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const messagesEndRef = useRef(null);
 
@@ -181,6 +182,12 @@ const ChatPage = () => {
 
   const handleSuggestionClick = (suggestion) => {
     sendMessage(suggestion);
+  };
+
+  const handleConfirmOperation = (confirmed) => {
+    if (pendingConfirmation) {
+      confirmOperation(pendingConfirmation.id, confirmed);
+    }
   };
 
   const formatMessage = (content) => {
@@ -366,6 +373,16 @@ const ChatPage = () => {
           }}
         />
       </div>
+
+      {/* Dialogue de confirmation pour les opérations sensibles */}
+      <ConfirmationDialog
+        isOpen={!!pendingConfirmation}
+        operation={pendingConfirmation}
+        onConfirm={() => handleConfirmOperation(true)}
+        onReject={() => handleConfirmOperation(false)}
+        onClose={() => handleConfirmOperation(false)}
+        isLoading={isLoading}
+      />
     </div>
   );
 };

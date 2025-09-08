@@ -47,6 +47,154 @@ except ImportError as e:
     def ai_disabled_response():
         return jsonify({'error': 'AI functionality is temporarily unavailable', 'ai_enabled': False}), 503
     
+    def detect_sensitive_operation(user_message):
+        """Détecte si le message utilisateur demande une opération sensible"""
+        sensitive_keywords = {
+            'create_client': ['créer client', 'ajouter client', 'nouveau client', 'créer customer'],
+            'create_invoice': ['créer facture', 'nouvelle facture', 'générer facture'],
+            'create_product': ['créer produit', 'ajouter produit', 'nouveau produit'],
+            'update_client': ['modifier client', 'mettre à jour client', 'changer client'],
+            'delete_client': ['supprimer client', 'effacer client', 'suppr client'],
+            'delete_invoice': ['supprimer facture', 'effacer facture', 'annuler facture'],
+            'import_data': ['importer', 'import', 'charger données']
+        }
+        
+        for operation, keywords in sensitive_keywords.items():
+            if any(keyword in user_message for keyword in keywords):
+                return operation
+        return None
+    
+    def request_confirmation(user_id, operation_type, user_message):
+        """Demande confirmation pour une opération sensible"""
+        from src.models.user import SageOperation, db
+        import uuid
+        
+        # Créer une opération en attente de confirmation
+        operation = SageOperation(
+            user_id=user_id,
+            operation_type=operation_type,
+            status='awaiting_confirmation'
+        )
+        operation.set_operation_data({
+            'original_message': user_message,
+            'confirmation_id': str(uuid.uuid4())
+        })
+        
+        db.session.add(operation)
+        db.session.commit()
+        
+        # Préparer le message de confirmation
+        operation_descriptions = {
+            'create_client': 'créer un nouveau client',
+            'create_invoice': 'créer une nouvelle facture',
+            'create_product': 'créer un nouveau produit',
+            'update_client': 'modifier les informations d\'un client',
+            'delete_client': 'supprimer un client',
+            'delete_invoice': 'supprimer une facture',
+            'import_data': 'importer des données'
+        }
+        
+        operation_desc = operation_descriptions.get(operation_type, 'effectuer cette opération')
+        confirmation_id = operation.get_operation_data()['confirmation_id']
+        
+        response = f"🚨 **CONFIRMATION REQUISE** 🚨\n\n"
+        response += f"Vous demandez à {operation_desc} dans Sage Business Cloud.\n\n"
+        response += f"⚠️ Cette action va **modifier vos données comptables** et ne peut pas être annulée facilement.\n\n"
+        response += f"**Confirmez-vous cette opération ?**\n\n"
+        response += f"✅ Tapez `OUI CONFIRMER {confirmation_id[:8]}` pour procéder\n"
+        response += f"❌ Tapez `NON` pour annuler\n\n"
+        response += f"_Cette demande expirera dans 5 minutes._"
+        
+        from datetime import datetime
+        
+        return jsonify({
+            'response': response,
+            'requires_confirmation': True,
+            'confirmation_id': confirmation_id,
+            'operation_type': operation_type,
+            'conversation_id': None,
+            'message_id': int(datetime.now().timestamp() * 1000),
+            'timestamp': datetime.now().isoformat(),
+            'agent_type': 'sage_confirmation',
+            'capabilities_used': ['human_in_loop'],
+            'success': True
+        }), 200
+    
+    def handle_confirmation(user_id, confirmation_id, user_message, sage_api):
+        """Traite la réponse de confirmation de l'utilisateur"""
+        from src.models.user import SageOperation, db
+        
+        # Trouver l'opération en attente
+        operation = SageOperation.query.filter_by(
+            user_id=user_id,
+            status='awaiting_confirmation'
+        ).filter(
+            SageOperation.operation_data.contains(confirmation_id)
+        ).first()
+        
+        if not operation:
+            response = "❌ Opération de confirmation non trouvée ou expirée."
+            return create_fallback_response(response, False)
+        
+        # Vérifier si c'est une confirmation
+        if any(word in user_message for word in ['oui', 'confirmer', 'confirm', 'yes']):
+            # Confirmation positive
+            operation.status = 'confirmed'
+            db.session.commit()
+            
+            # Exécuter l'opération
+            return execute_confirmed_operation(operation, sage_api)
+        else:
+            # Confirmation négative
+            operation.status = 'rejected'
+            db.session.commit()
+            
+            response = "✅ Opération annulée avec succès. Aucune modification n'a été apportée à vos données Sage."
+            return create_fallback_response(response, True)
+    
+    def execute_confirmed_operation(operation, sage_api):
+        """Exécute l'opération après confirmation"""
+        try:
+            operation_data = operation.get_operation_data()
+            original_message = operation_data.get('original_message', '')
+            
+            # Pour l'instant, on simule l'exécution
+            response = f"✅ **OPÉRATION CONFIRMÉE ET EXÉCUTÉE**\n\n"
+            response += f"L'opération '{operation.operation_type}' a été exécutée avec succès.\n\n"
+            response += f"Message original: {original_message}\n\n"
+            response += f"⚠️ Note: L'exécution réelle des opérations Sage sera implémentée selon vos besoins spécifiques."
+            
+            # Marquer comme réussie
+            operation.status = 'success'
+            operation.set_sage_response({'message': 'Simulated execution', 'success': True})
+            db.session.commit()
+            
+            return create_fallback_response(response, True)
+            
+        except Exception as e:
+            operation.status = 'error'
+            operation.error_message = str(e)
+            db.session.commit()
+            
+            response = f"❌ Erreur lors de l'exécution: {str(e)}"
+            return create_fallback_response(response, False)
+    
+    def create_fallback_response(response_text, success=True):
+        """Helper pour créer une réponse fallback standardisée"""
+        from datetime import datetime
+        
+        return jsonify({
+            'response': response_text,
+            'conversation_id': None,
+            'message_id': int(datetime.now().timestamp() * 1000),
+            'timestamp': datetime.now().isoformat(),
+            'agent_type': 'sage_fallback',
+            'capabilities_used': ['human_in_loop'] if success else [],
+            'success': success,
+            'ai_enabled': False,
+            'sage_connected': True
+        }), 200
+
     def ai_chat_fallback_response():
         from flask_jwt_extended import jwt_required, get_jwt_identity
         from src.models.user import User
@@ -58,6 +206,7 @@ except ImportError as e:
             # Get user message from request
             data = request.get_json() if request.is_json else {}
             user_message = data.get('message', '').lower()
+            confirmation_id = data.get('confirmation_id')  # For pending operations
             
             # Get current user (if authenticated)
             user_id = None
@@ -84,6 +233,15 @@ except ImportError as e:
             except:
                 # If not authenticated or error, continue with basic response
                 pass
+            
+            # Check if user is confirming a pending operation
+            if confirmation_id:
+                return handle_confirmation(user_id, confirmation_id, user_message, sage_api)
+            
+            # Detect sensitive operations that need confirmation
+            sensitive_operation = detect_sensitive_operation(user_message)
+            if sensitive_operation and sage_connected:
+                return request_confirmation(user_id, sensitive_operation, user_message)
             
             # Process user request with actual Sage API calls if possible
             if sage_connected and sage_api:

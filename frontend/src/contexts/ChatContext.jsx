@@ -18,6 +18,7 @@ export function ChatProvider({ children }) {
   const [agentCapabilities, setAgentCapabilities] = useState(null)
   const [quickActions, setQuickActions] = useState([])
   const [suggestions, setSuggestions] = useState([])
+  const [pendingConfirmation, setPendingConfirmation] = useState(null)
 
   // Charger les conversations au démarrage
   useEffect(() => {
@@ -165,6 +166,16 @@ export function ChatProvider({ children }) {
       const data = await response.json()
 
       if (response.ok) {
+        // Vérifier si c'est une demande de confirmation
+        if (data.requires_confirmation) {
+          setPendingConfirmation({
+            id: data.confirmation_id,
+            operation_type: data.operation_type,
+            message: data.response,
+            timestamp: data.timestamp
+          })
+        }
+        
         // Ajouter la réponse de l'agent
         const agentMessage = {
           id: data.message_id,
@@ -174,7 +185,8 @@ export function ChatProvider({ children }) {
           metadata: {
             agent_type: data.agent_type,
             capabilities_used: data.capabilities_used,
-            success: data.success
+            success: data.success,
+            requires_confirmation: data.requires_confirmation
           }
         }
 
@@ -307,6 +319,60 @@ export function ChatProvider({ children }) {
     setCurrentConversation(null)
   }
 
+  const confirmOperation = async (confirmationId, confirmed) => {
+    try {
+      // On utilise directement le chat pour la confirmation via confirmation_id
+      const response = await fetch(`${API_BASE_URL}/agent/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          message: confirmed ? `OUI CONFIRMER ${confirmationId.substring(0, 8)}` : 'NON',
+          confirmation_id: confirmationId
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // Ajouter le message de confirmation de l'utilisateur
+        const userConfirmMessage = {
+          id: Date.now() - 1,
+          content: confirmed ? `OUI CONFIRMER ${confirmationId.substring(0, 8)}` : 'NON',
+          is_from_user: true,
+          created_at: new Date().toISOString(),
+          metadata: {}
+        }
+
+        // Ajouter la réponse du système
+        const confirmationMessage = {
+          id: data.message_id || Date.now(),
+          content: data.response,
+          is_from_user: false,
+          created_at: data.timestamp || new Date().toISOString(),
+          metadata: {
+            agent_type: data.agent_type || 'sage_confirmation',
+            success: data.success
+          }
+        }
+
+        setMessages(prev => [...prev, userConfirmMessage, confirmationMessage])
+        setPendingConfirmation(null)
+        
+        return { success: true }
+      } else {
+        toast.error(data.error || 'Erreur lors de la confirmation')
+        return { success: false, error: data.error }
+      }
+    } catch (error) {
+      console.error('Erreur lors de la confirmation:', error)
+      toast.error('Erreur de connexion au serveur')
+      return { success: false, error: 'Erreur de connexion au serveur' }
+    }
+  }
+
   const value = {
     conversations,
     currentConversation,
@@ -316,6 +382,7 @@ export function ChatProvider({ children }) {
     agentCapabilities,
     quickActions,
     suggestions,
+    pendingConfirmation,
     createNewConversation,
     selectConversation,
     sendMessage,
@@ -323,7 +390,8 @@ export function ChatProvider({ children }) {
     deleteConversation,
     clearMessages,
     loadConversations,
-    loadSuggestions
+    loadSuggestions,
+    confirmOperation
   }
 
   return (
