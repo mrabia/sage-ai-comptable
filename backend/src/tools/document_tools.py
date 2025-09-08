@@ -1,9 +1,21 @@
 import logging
 from typing import Dict, Any, Optional, List
-from crewai.tools import BaseTool
 from src.models.document import Document
 from src.models.user import db
 from src.services.document_processor import DocumentProcessor
+
+# Try to import CrewAI tools with fallback
+try:
+    from crewai.tools import BaseTool
+except ImportError:
+    try:
+        from crewai import BaseTool
+    except ImportError:
+        # Create a fallback BaseTool class
+        class BaseTool:
+            def __init__(self, **kwargs):
+                for key, value in kwargs.items():
+                    setattr(self, key, value)
 
 logger = logging.getLogger(__name__)
 
