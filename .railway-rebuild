@@ -1,0 +1,4 @@
+# Force Railway to rebuild Docker image and clear cache
+# This file is used to trigger a fresh deployment
+BUILD_TIMESTAMP=2025-09-08-force-rebuild
+CREWAI_VERSION_FIX=0.28.8

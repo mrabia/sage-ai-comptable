@@ -17,7 +17,7 @@ pandas>=2.0.0,<3.0.0
 openpyxl>=3.1.0
 PyPDF2>=3.0.0
 
-# AI/ML packages - use specific compatible versions  
+# AI/ML packages - use specific compatible versions (force rebuild)
 crewai==0.28.8
 crewai-tools>=0.1.0,<0.2.0
 langchain>=0.1.0,<0.3.0
