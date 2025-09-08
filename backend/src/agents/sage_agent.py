@@ -34,15 +34,38 @@ class SageAgentManager:
             api_key = os.getenv("OPENAI_API_KEY")
             if api_key:
                 try:
-                    self.llm = ChatOpenAI(
-                        model="gpt-4o-mini",
-                        api_key=api_key,
-                        base_url=os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
-                        temperature=0.1,
-                        max_tokens=2000
-                    )
+                    # Configuration LLM avec gestion spécifique de l'erreur 'proxies'
+                    llm_config = {
+                        "model": "gpt-4o-mini",
+                        "api_key": api_key,
+                        "base_url": os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
+                        "temperature": 0.1,
+                        "max_tokens": 2000
+                    }
+                    
+                    self.llm = ChatOpenAI(**llm_config)
                     self.agents_available = True
                     print("✅ LLM configured successfully")
+                except TypeError as e:
+                    if "proxies" in str(e):
+                        print(f"⚠️ Proxies argument error detected - trying alternative configuration: {e}")
+                        try:
+                            # Retry without any potentially problematic kwargs
+                            self.llm = ChatOpenAI(
+                                model="gpt-4o-mini",
+                                openai_api_key=api_key,  # Alternative parameter name
+                                openai_api_base=os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
+                                temperature=0.1,
+                                max_tokens=2000
+                            )
+                            self.agents_available = True
+                            print("✅ LLM configured successfully (alternative config)")
+                        except Exception as e2:
+                            print(f"❌ Alternative LLM config also failed: {e2}")
+                            self.llm = None
+                    else:
+                        print(f"❌ Error configuring LLM (TypeError): {e}")
+                        self.llm = None
                 except Exception as e:
                     print(f"❌ Error configuring LLM: {e}")
                     self.llm = None
