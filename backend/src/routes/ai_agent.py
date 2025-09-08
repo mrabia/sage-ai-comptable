@@ -406,10 +406,14 @@ def handle_agent_confirmation(user_id, confirmation_id, user_message, conversati
         response = "❌ Cette opération ne peut plus être confirmée."
         return create_agent_response(response, conversation, False)
     
-    # Vérifier si c'est une confirmation
-    if any(word in user_message.lower() for word in ['oui', 'confirmer', 'confirm', 'yes']):
-        # Confirmation positive - exécuter l'action planifiée
-        # Mettre à jour le statut de façon atomique pour éviter les doublons
+    # Vérifier le format exact de la confirmation avec l'ID
+    operation_data = operation.get_operation_data()
+    expected_confirmation_id = operation_data.get('confirmation_id', '')
+    expected_partial_id = expected_confirmation_id[:8] if expected_confirmation_id else ''
+    
+    # Vérifier si c'est une confirmation positive avec le bon ID
+    if any(word in user_message.lower() for word in ['oui', 'confirmer', 'confirm', 'yes']) and expected_partial_id in user_message:
+        # Confirmation positive avec bon ID - exécuter l'action planifiée
         try:
             operation.status = 'confirmed'
             db.session.commit()
@@ -420,8 +424,8 @@ def handle_agent_confirmation(user_id, confirmation_id, user_message, conversati
             print(f"Error during confirmation: {e}")
             response = "❌ Erreur lors de la confirmation. Veuillez réessayer."
             return create_agent_response(response, conversation, False)
-    else:
-        # Confirmation négative
+    elif user_message.lower().strip() == 'non':
+        # Confirmation négative explicite
         try:
             operation.status = 'rejected'
             db.session.commit()
@@ -433,6 +437,13 @@ def handle_agent_confirmation(user_id, confirmation_id, user_message, conversati
             print(f"Error during rejection: {e}")
             response = "❌ Erreur lors de l'annulation. Veuillez réessayer."
             return create_agent_response(response, conversation, False)
+    else:
+        # Message non reconnu - demander clarification
+        response = f"❓ **Message non reconnu pour la confirmation**\n\n"
+        response += f"Pour confirmer, tapez exactement : `OUI CONFIRMER {expected_partial_id}`\n"
+        response += f"Pour annuler, tapez exactement : `NON`\n\n"
+        response += f"Votre message: \"{user_message}\" n'est pas reconnu."
+        return create_agent_response(response, conversation, False)
 
 
 def execute_planned_action(operation, conversation):
@@ -531,7 +542,8 @@ def execute_real_sage_action(user_id, action_type, planned_action):
         
         tool_name = action_tool_map.get(action_type)
         if not tool_name:
-            return False, f"Type d'action non supporté: {action_type}"
+            available_types = ', '.join(action_tool_map.keys())
+            return False, f"Type d'action non supporté: {action_type}. Types disponibles: {available_types}"
         
         # Trouver l'outil Sage correspondant
         sage_tool = None
