@@ -32,13 +32,12 @@ ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 # Copy package files first for better caching
 COPY frontend/package*.json ./frontend/
 COPY backend/requirements.txt ./backend/
-COPY backend/constraints.txt ./backend/
 
 # Install backend dependencies first  
 WORKDIR /app/backend
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install numpy==1.24.3 --no-cache-dir
-RUN pip install -r requirements.txt -c constraints.txt --no-cache-dir
+RUN pip install -r requirements.txt --no-cache-dir
 
 # Install frontend dependencies
 WORKDIR /app/frontend  

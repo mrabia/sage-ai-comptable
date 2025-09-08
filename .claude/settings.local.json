@@ -6,7 +6,8 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Read(//c/Users/MoMo/Downloads/**)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []
