@@ -62,10 +62,41 @@ def chat_with_agent():
         )
         db.session.add(user_msg)
         
-        # Check if this is a confirmation response
+        # Check if this is a confirmation response (via confirmation_id OR manual typing)
         confirmation_id = data.get('confirmation_id')
+        
+        # Also check if the user manually typed a confirmation with an ID
+        manual_confirmation_match = None
+        if not confirmation_id:
+            import re
+            # Check for manual confirmation pattern: "OUI CONFIRMER [8-char-id]"
+            match = re.search(r'(?:oui|yes)\s+(?:confirmer?|confirm)\s+([a-f0-9]{8})', user_message.lower())
+            if match:
+                manual_confirmation_match = match.group(1)
+                # Find the operation with this partial ID
+                from src.models.user import SageOperation
+                operation = SageOperation.query.filter_by(user_id=user_id).filter(
+                    SageOperation.operation_data.contains(manual_confirmation_match)
+                ).filter_by(status='awaiting_confirmation').first()
+                if operation:
+                    confirmation_id = operation.get_operation_data().get('confirmation_id')
+        
         if confirmation_id:
             return handle_agent_confirmation(user_id, confirmation_id, user_message, conversation, user_msg)
+        
+        # Also check if this is a manual "NON" for rejection
+        elif user_message.lower().strip() == 'non':
+            # Find any pending confirmation for this user
+            from src.models.user import SageOperation
+            pending_operation = SageOperation.query.filter_by(
+                user_id=user_id, 
+                status='awaiting_confirmation'
+            ).first()
+            if pending_operation:
+                operation_data = pending_operation.get_operation_data()
+                confirmation_id = operation_data.get('confirmation_id')
+                if confirmation_id:
+                    return handle_agent_confirmation(user_id, confirmation_id, user_message, conversation, user_msg)
         
         # Traiter le message avec l'agent AI
         agent_response = agent_manager.process_user_request(
