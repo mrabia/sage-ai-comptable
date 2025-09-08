@@ -648,12 +648,41 @@ def execute_real_sage_action(user_id, action_type, planned_action):
             return True, result
         
         elif action_type == 'create_invoice':
-            # Pour les factures, on a besoin de plus d'informations
-            # Pour l'instant, créer une facture basique
+            # Pour les factures, créer une facture avec des éléments basiques
+            # Extraire les détails depuis la description si possible
+            description = planned_action.get('description', '')
+            
+            # Parser les informations de facture depuis la description
+            import re
+            
+            # Chercher un montant dans la description
+            amount_match = re.search(r'(\d+(?:[.,]\d{2})?)\s*€?', description)
+            amount = float(amount_match.group(1).replace(',', '.')) if amount_match else 100.0
+            
+            # Chercher un nom de client/produit
+            service_match = re.search(r'(service|produit|consultation|formation)\s+([^,\n]+)', description, re.IGNORECASE)
+            service_name = service_match.group(2).strip() if service_match else "Service de consultation"
+            
+            # Éléments de facture par défaut
+            items = [
+                {
+                    "description": service_name,
+                    "quantity": 1.0,
+                    "unit_price": amount
+                }
+            ]
+            
+            # Date actuelle
+            from datetime import datetime, timedelta
+            today = datetime.now().strftime("%Y-%m-%d")
+            due_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+            
             result = sage_tool._run(
-                customer_id="test_customer",
-                date="2024-01-01",
-                due_date="2024-01-31"
+                customer_id="CUSTOMER_001",  # ID client par défaut pour les tests
+                items=items,
+                date=today,
+                due_date=due_date,
+                reference=f"FACT-{datetime.now().strftime('%Y%m%d-%H%M')}"
             )
             return True, result
         
