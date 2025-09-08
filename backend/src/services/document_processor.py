@@ -6,10 +6,18 @@ from typing import Dict, Any, Optional, List
 from src.models.document import Document
 from src.models.user import db
 from src.services.pdf_processor import PDFProcessor
-from src.services.image_processor import ImageProcessor
 from src.services.csv_processor import CSVProcessor
 from src.services.excel_processor import ExcelProcessor
 from src.services.invoice_extractor import InvoiceExtractor
+
+# Graceful import for image processor
+try:
+    from src.services.image_processor import ImageProcessor, IMAGE_PROCESSING_AVAILABLE
+    IMAGE_PROCESSOR_AVAILABLE = True
+except ImportError:
+    ImageProcessor = None
+    IMAGE_PROCESSING_AVAILABLE = False
+    IMAGE_PROCESSOR_AVAILABLE = False
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -21,10 +29,16 @@ class DocumentProcessor:
     def __init__(self):
         self.processors = {
             'pdf': PDFProcessor(),
-            'image': ImageProcessor(),
             'csv': CSVProcessor(),
             'excel': ExcelProcessor()
         }
+        
+        # Add image processor only if available
+        if IMAGE_PROCESSOR_AVAILABLE and ImageProcessor:
+            self.processors['image'] = ImageProcessor()
+        else:
+            logger.warning("Image processor not available - image processing will be skipped")
+            
         self.invoice_extractor = InvoiceExtractor()
     
     def process_document_async(self, document_id: int):

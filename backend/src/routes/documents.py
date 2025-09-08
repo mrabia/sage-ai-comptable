@@ -1,7 +1,15 @@
 import os
 import uuid
-import magic
 from datetime import datetime
+
+# Graceful import for python-magic
+try:
+    import magic
+    MAGIC_AVAILABLE = True
+except ImportError:
+    print("Warning: python-magic not available. File type detection will use filename extensions only.")
+    MAGIC_AVAILABLE = False
+    magic = None
 from flask import Blueprint, request, jsonify, current_app, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
@@ -15,6 +23,35 @@ documents_bp = Blueprint('documents', __name__)
 UPLOAD_FOLDER = 'src/uploads'
 TEMP_FOLDER = 'src/uploads/temp'
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50 MB
+
+def guess_mime_type_from_filename(filename):
+    """Guess MIME type from filename extension (fallback when python-magic is not available)"""
+    if not filename:
+        return 'application/octet-stream'
+    
+    extension = filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
+    
+    mime_types = {
+        'pdf': 'application/pdf',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'csv': 'text/csv',
+        'txt': 'text/plain',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'bmp': 'image/bmp',
+        'tiff': 'image/tiff',
+        'zip': 'application/zip',
+        'rar': 'application/x-rar-compressed',
+        'json': 'application/json',
+        'xml': 'application/xml'
+    }
+    
+    return mime_types.get(extension, 'application/octet-stream')
 
 def allowed_file(filename, mime_type):
     """Vérifie si le fichier est autorisé"""
@@ -58,7 +95,16 @@ def upload_document():
         file_content = file.read()
         file.seek(0)
         
-        mime_type = magic.from_buffer(file_content, mime=True)
+        if MAGIC_AVAILABLE and magic:
+            try:
+                mime_type = magic.from_buffer(file_content, mime=True)
+            except Exception as e:
+                print(f"Warning: magic detection failed: {e}")
+                # Fallback to guessing from filename
+                mime_type = guess_mime_type_from_filename(file.filename)
+        else:
+            # Fallback to guessing from filename
+            mime_type = guess_mime_type_from_filename(file.filename)
         
         # Vérifier si le type de fichier est supporté
         is_supported, file_type = allowed_file(file.filename, mime_type)

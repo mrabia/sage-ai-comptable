@@ -26,3 +26,12 @@ openai>=1.30.0,<1.40.0
 
 # Database
 psycopg>=3.1.0,<4.0.0
+
+# File processing
+python-magic>=0.4.27
+
+# Image processing and OCR (optional dependencies)
+Pillow>=10.0.0
+opencv-python-headless>=4.8.0
+pytesseract>=0.3.10
+# Note: numpy already specified above for CrewAI compatibility

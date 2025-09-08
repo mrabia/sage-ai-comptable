@@ -1,12 +1,40 @@
 import os
 import logging
 from typing import Optional, Dict, Any, List
-from PIL import Image, ImageEnhance, ImageFilter
-import pytesseract
-import cv2
-import numpy as np
+
+# Graceful imports for image processing dependencies
+try:
+    from PIL import Image, ImageEnhance, ImageFilter
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    Image = ImageEnhance = ImageFilter = None
+
+try:
+    import pytesseract
+    PYTESSERACT_AVAILABLE = True
+except ImportError:
+    PYTESSERACT_AVAILABLE = False
+    pytesseract = None
+
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    cv2 = None
+
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    np = None
 
 logger = logging.getLogger(__name__)
+
+# Check if image processing is fully available
+IMAGE_PROCESSING_AVAILABLE = PIL_AVAILABLE and PYTESSERACT_AVAILABLE and CV2_AVAILABLE and NUMPY_AVAILABLE
 
 class ImageProcessor:
     """Service pour traiter les images avec OCR"""
@@ -17,6 +45,10 @@ class ImageProcessor:
     
     def extract_text(self, file_path: str) -> Optional[str]:
         """Extrait le texte d'une image avec OCR"""
+        if not IMAGE_PROCESSING_AVAILABLE:
+            logger.warning("Image processing dependencies not available (PIL, pytesseract, cv2, numpy)")
+            return None
+            
         try:
             # Préprocesser l'image pour améliorer l'OCR
             processed_image = self._preprocess_image(file_path)
@@ -45,6 +77,9 @@ class ImageProcessor:
     
     def _preprocess_image(self, file_path: str) -> Optional[Image.Image]:
         """Préprocesse l'image pour améliorer la qualité de l'OCR"""
+        if not IMAGE_PROCESSING_AVAILABLE:
+            return None
+            
         try:
             # Charger l'image
             image = Image.open(file_path)

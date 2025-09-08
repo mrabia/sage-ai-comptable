@@ -83,6 +83,27 @@ except ImportError:
     AI_COMPONENTS_AVAILABLE = False
 ```
 
+### 10. **Missing Python-Magic Module** ❌→✅
+**Problem:** `ModuleNotFoundError: No module named 'magic'` in document routes
+**Fix:** Added `python-magic` to requirements.txt and graceful fallback:
+```python
+try:
+    import magic
+    MAGIC_AVAILABLE = True
+except ImportError:
+    MAGIC_AVAILABLE = False
+    # Fallback to filename-based MIME detection
+```
+
+### 11. **Missing Image Processing Dependencies** ❌→✅
+**Problem:** Missing PIL, OpenCV, pytesseract for image processing
+**Fix:** Added dependencies to requirements.txt and graceful handling:
+```txt
+Pillow>=10.0.0
+opencv-python-headless>=4.8.0
+pytesseract>=0.3.10
+```
+
 ## 📋 Additional Improvements
 
 ### Debug Tools Added
