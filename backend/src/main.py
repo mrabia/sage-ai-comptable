@@ -104,7 +104,15 @@ except ImportError as e:
                         else:
                             response = "Impossible de récupérer la liste des clients pour le moment."
                     except Exception as e:
-                        response = f"Erreur lors de la récupération des clients: {str(e)}"
+                        error_msg = str(e)
+                        if "invalid_grant" in error_msg or "token" in error_msg.lower():
+                            # Clear expired credentials
+                            user.sage_credentials_encrypted = None
+                            db.session.commit()
+                            response = "❌ Vos tokens Sage ont expiré. Veuillez vous reconnecter à Sage pour continuer."
+                            sage_connected = False
+                        else:
+                            response = f"Erreur lors de la récupération des clients: {error_msg}"
                 
                 # Handle balance sheet queries  
                 elif any(word in user_message for word in ['bilan', 'balance']):
@@ -120,7 +128,15 @@ except ImportError as e:
                         else:
                             response = "Impossible de récupérer le bilan pour le moment."
                     except Exception as e:
-                        response = f"Erreur lors de la récupération du bilan: {str(e)}"
+                        error_msg = str(e)
+                        if "invalid_grant" in error_msg or "token" in error_msg.lower():
+                            # Clear expired credentials
+                            user.sage_credentials_encrypted = None
+                            db.session.commit()
+                            response = "❌ Vos tokens Sage ont expiré. Veuillez vous reconnecter à Sage pour continuer."
+                            sage_connected = False
+                        else:
+                            response = f"Erreur lors de la récupération du bilan: {error_msg}"
                 
                 # Handle invoice queries
                 elif any(word in user_message for word in ['facture', 'invoice']):
@@ -139,7 +155,15 @@ except ImportError as e:
                         else:
                             response = "Impossible de récupérer les factures pour le moment."
                     except Exception as e:
-                        response = f"Erreur lors de la récupération des factures: {str(e)}"
+                        error_msg = str(e)
+                        if "invalid_grant" in error_msg or "token" in error_msg.lower():
+                            # Clear expired credentials
+                            user.sage_credentials_encrypted = None
+                            db.session.commit()
+                            response = "❌ Vos tokens Sage ont expiré. Veuillez vous reconnecter à Sage pour continuer."
+                            sage_connected = False
+                        else:
+                            response = f"Erreur lors de la récupération des factures: {error_msg}"
                 
                 else:
                     response = "Je peux vous aider avec vos données Sage. Demandez-moi la liste des clients, le bilan comptable, ou les factures récentes."

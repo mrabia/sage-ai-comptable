@@ -174,9 +174,14 @@ def sage_auth_status():
                     'error': f'Erreur lors de la récupération des businesses: {str(e)}'
                 }), 400
         else:
+            # Token invalide - nettoyer les credentials pour forcer une nouvelle authentification
+            user.sage_credentials_encrypted = None
+            db.session.commit()
+            
             return jsonify({
                 'authenticated': False,
-                'message': 'Token Sage expiré ou invalide'
+                'message': 'Token Sage expiré ou invalide - veuillez vous reconnecter',
+                'require_reconnect': True
             }), 200
         
     except Exception as e:
