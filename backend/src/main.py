@@ -36,10 +36,18 @@ from src.routes.accounting_data import accounting_data_bp
 AI_ENABLED = False
 try:
     from src.routes.ai_agent import ai_agent_bp
-    AI_ENABLED = True
-    logger.info("AI components loaded successfully")
-except ImportError as e:
-    logger.warning(f"AI components failed to load: {e}")
+    # Test if AI agent actually works
+    from src.agents.sage_agent import SageAgentManager
+    test_agent = SageAgentManager()
+    # Test with a simple request - if this fails, AI is not available
+    test_response = test_agent.get_agent_capabilities()
+    if test_response and len(test_response) > 0:
+        AI_ENABLED = True
+        logger.info("AI components loaded and tested successfully")
+    else:
+        raise Exception("AI agent capabilities test failed")
+except Exception as e:
+    logger.warning(f"AI components failed to load or test: {e}")
     logger.info("Application will run without AI functionality")
     # Create a dummy blueprint for AI routes
     ai_agent_bp = Blueprint('ai_agent_disabled', __name__)
@@ -215,6 +223,8 @@ except ImportError as e:
             
             try:
                 # Try to get authenticated user
+                from flask_jwt_extended import verify_jwt_in_request
+                verify_jwt_in_request(optional=True)
                 user_id = get_jwt_identity() 
                 if user_id:
                     user = User.query.get(int(user_id))
@@ -230,7 +240,7 @@ except ImportError as e:
                             sage_oauth = SageOAuth2Service(SAGE_CLIENT_ID, SAGE_CLIENT_SECRET, SAGE_REDIRECT_URI)
                             sage_api = SageAPIService(sage_oauth)
                             sage_api.set_credentials(credentials)
-            except:
+            except Exception as auth_error:
                 # If not authenticated or error, continue with basic response
                 pass
             
