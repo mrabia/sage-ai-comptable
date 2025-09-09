@@ -748,4 +748,75 @@ class SageAPIService:
                 'to_date': to_date
             }
         }
+    
+    # ===== CREATE JOURNAL ENTRY - Manual Accounting Entries =====
+    
+    def create_manual_journal_entry(self, credentials: Dict[str, Any], journal_data: Dict[str, Any], 
+                                   business_id: Optional[str] = None) -> Dict[str, Any]:
+        """Crée une écriture comptable manuelle via les services Sage"""
+        # Dans Sage, les écritures manuelles peuvent être créées via plusieurs méthodes:
+        # 1. Via des "Other Payments" ou "Other Receipts" 
+        # 2. Via des "Journal" entries si disponible
+        # 3. Via des "Quick Entries"
+        
+        # Construire l'écriture selon le schéma Sage
+        entry_type = journal_data.get('entry_type', 'other_payment')  # other_payment, other_receipt, journal
+        
+        if entry_type == 'other_payment':
+            # Utiliser l'API Other Payments pour les écritures manuelles
+            other_payment = {
+                "transaction_type_id": journal_data.get('transaction_type_id'),
+                "reference": journal_data.get('reference', ''),
+                "total_amount": float(journal_data.get('total_amount', 0)),
+                "date": journal_data['date'],
+                "contact_id": journal_data.get('contact_id'),
+                "bank_account_id": journal_data.get('bank_account_id'),
+                "description": journal_data.get('description', journal_data.get('narrative', ''))
+            }
+            
+            # Champs optionnels
+            if journal_data.get('tax_rate_id'):
+                other_payment['tax_rate_id'] = journal_data['tax_rate_id']
+            if journal_data.get('net_amount'):
+                other_payment['net_amount'] = float(journal_data['net_amount'])
+                
+            sage_request = {'other_payment': other_payment}
+            return self._make_request('POST', 'other_payments', credentials, business_id, json=sage_request)
+            
+        elif entry_type == 'other_receipt':
+            # Utiliser l'API Other Receipts pour les écritures manuelles
+            other_receipt = {
+                "transaction_type_id": journal_data.get('transaction_type_id'),
+                "reference": journal_data.get('reference', ''),
+                "total_amount": float(journal_data.get('total_amount', 0)),
+                "date": journal_data['date'],
+                "contact_id": journal_data.get('contact_id'),
+                "bank_account_id": journal_data.get('bank_account_id'),
+                "description": journal_data.get('description', journal_data.get('narrative', ''))
+            }
+            
+            # Champs optionnels
+            if journal_data.get('tax_rate_id'):
+                other_receipt['tax_rate_id'] = journal_data['tax_rate_id']
+            if journal_data.get('net_amount'):
+                other_receipt['net_amount'] = float(journal_data['net_amount'])
+                
+            sage_request = {'other_receipt': other_receipt}
+            return self._make_request('POST', 'other_receipts', credentials, business_id, json=sage_request)
+            
+        else:
+            # Fallback - essayer les quick entries ou journals si disponible
+            return {
+                'error': 'Type d\'écriture non supporté. Utilisez "other_payment" ou "other_receipt".'
+            }
+            
+    def get_transaction_types(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                             limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+        """Récupère les types de transactions disponibles pour les écritures manuelles"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all'
+        }
+        return self._make_request('GET', 'transaction_types', credentials, business_id, params=params)
 

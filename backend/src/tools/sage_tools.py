@@ -1119,6 +1119,135 @@ class GetFixedAssetsTool(SageBaseTool):
         except Exception as e:
             return f"❌ Erreur lors de l'analyse des immobilisations: {str(e)}"
 
+class CreateJournalEntryInput(BaseModel):
+    """Input schema for creating a manual journal entry"""
+    entry_type: str = Field(..., description="Type d'écriture (other_payment pour les décaissements, other_receipt pour les encaissements)")
+    date: str = Field(..., description="Date de l'écriture (YYYY-MM-DD)")
+    total_amount: float = Field(..., description="Montant total de l'écriture")
+    description: str = Field(..., description="Description de l'écriture")
+    reference: Optional[str] = Field(None, description="Référence de l'écriture")
+    transaction_type_id: Optional[str] = Field(None, description="ID du type de transaction")
+    bank_account_id: Optional[str] = Field(None, description="ID du compte bancaire")
+    contact_id: Optional[str] = Field(None, description="ID du contact (fournisseur/client)")
+    tax_rate_id: Optional[str] = Field(None, description="ID du taux de TVA")
+    net_amount: Optional[float] = Field(None, description="Montant HT si différent du total")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class CreateJournalEntryTool(SageBaseTool):
+    name: str = "create_journal_entry"
+    description: str = "Crée une écriture comptable manuelle pour corrections, régularisations et ajustements"
+    args_schema: Type[BaseModel] = CreateJournalEntryInput
+
+    def _run(self, entry_type: str, date: str, total_amount: float, description: str,
+             reference: Optional[str] = None, transaction_type_id: Optional[str] = None,
+             bank_account_id: Optional[str] = None, contact_id: Optional[str] = None,
+             tax_rate_id: Optional[str] = None, net_amount: Optional[float] = None,
+             business_id: Optional[str] = None) -> str:
+        try:
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            # Validation des données d'entrée
+            if entry_type not in ['other_payment', 'other_receipt']:
+                return "❌ Erreur: entry_type doit être 'other_payment' ou 'other_receipt'."
+            
+            if total_amount <= 0:
+                return "❌ Erreur: Le montant doit être positif."
+            
+            # Auto-génération de la référence si non fournie
+            if not reference:
+                reference = f'{"PAY" if entry_type == "other_payment" else "REC"}-{int(time.time())}'
+            
+            # Récupérer les types de transactions disponibles si besoin
+            if not transaction_type_id:
+                try:
+                    types_result = sage_api.get_transaction_types(credentials, business_id, 20)
+                    transaction_types = types_result.get('$items', [])
+                    
+                    # Chercher un type approprié selon l'entry_type
+                    for trans_type in transaction_types:
+                        type_name = trans_type.get('displayed_as', '').lower()
+                        if entry_type == 'other_payment' and ('payment' in type_name or 'expense' in type_name):
+                            transaction_type_id = trans_type.get('id')
+                            break
+                        elif entry_type == 'other_receipt' and ('receipt' in type_name or 'income' in type_name):
+                            transaction_type_id = trans_type.get('id')
+                            break
+                    
+                    # Si pas trouvé, utiliser le premier disponible
+                    if not transaction_type_id and transaction_types:
+                        transaction_type_id = transaction_types[0].get('id')
+                        
+                except Exception:
+                    # Si l'API transaction_types n'est pas disponible, continuer sans
+                    pass
+            
+            # Récupérer les comptes bancaires si besoin
+            if not bank_account_id:
+                try:
+                    banks_result = sage_api.get_bank_accounts(credentials, business_id)
+                    bank_accounts = banks_result.get('$items', [])
+                    if bank_accounts:
+                        # Utiliser le premier compte bancaire trouvé
+                        bank_account_id = bank_accounts[0].get('id')
+                except Exception:
+                    # Si impossible de récupérer les comptes bancaires, continuer sans
+                    pass
+            
+            # Préparer les données de l'écriture
+            journal_data = {
+                'entry_type': entry_type,
+                'date': date,
+                'total_amount': total_amount,
+                'description': description,
+                'reference': reference,
+                'transaction_type_id': transaction_type_id,
+                'bank_account_id': bank_account_id,
+                'contact_id': contact_id,
+                'tax_rate_id': tax_rate_id,
+                'net_amount': net_amount
+            }
+            
+            result = sage_api.create_manual_journal_entry(credentials, journal_data, business_id)
+            
+            if 'error' in result:
+                return f"❌ Erreur lors de la création: {result['error']}"
+            
+            # Extraction des informations de l'écriture créée
+            entry = result
+            if entry_type == 'other_payment' and 'other_payment' in result:
+                entry = result['other_payment']
+            elif entry_type == 'other_receipt' and 'other_receipt' in result:
+                entry = result['other_receipt']
+            
+            entry_ref = entry.get('reference', entry.get('displayed_as', reference))
+            entry_id = entry.get('id', 'N/A')
+            entry_amount = entry.get('total_amount', total_amount)
+            entry_status = entry.get('status', {}).get('displayed_as', 'Créé')
+            
+            # Déterminer le type d'écriture en français
+            entry_type_fr = "Décaissement" if entry_type == "other_payment" else "Encaissement"
+            icon = "💸" if entry_type == "other_payment" else "💰"
+            
+            return f"""{icon} Écriture comptable créée avec succès!
+
+📋 DÉTAILS:
+ID: {entry_id}
+Type: {entry_type_fr}
+Référence: {entry_ref}
+Date: {date}
+Montant: {entry_amount}€
+Statut: {entry_status}
+
+📝 DESCRIPTION:
+{description}
+
+🎯 Cette écriture manuelle permet les corrections comptables et régularisations d'expert!"""
+            
+        except Exception as e:
+            return f"❌ Erreur lors de la création de l'écriture comptable: {str(e)}"
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -1478,6 +1607,7 @@ try:
         GetBankReconciliationTool(),
         CreatePurchaseInvoiceTool(),
         GetFixedAssetsTool(),
+        CreateJournalEntryTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),
