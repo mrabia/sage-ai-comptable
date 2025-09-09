@@ -760,6 +760,123 @@ class GetLedgerAccountsTool(SageBaseTool):
         except Exception as e:
             return f"❌ Erreur lors de la récupération du plan comptable: {str(e)}"
 
+class GetBankReconciliationInput(BaseModel):
+    """Input schema for getting bank reconciliation"""
+    limit: Optional[int] = Field(20, description="Nombre de rapprochements à récupérer")
+    bank_account_id: Optional[str] = Field(None, description="ID du compte bancaire spécifique")
+    from_date: Optional[str] = Field(None, description="Date de début (YYYY-MM-DD)")
+    to_date: Optional[str] = Field(None, description="Date de fin (YYYY-MM-DD)")
+    status: Optional[str] = Field(None, description="Statut du rapprochement (reconciled/unreconciled)")
+    show_transactions: Optional[bool] = Field(True, description="Inclure l'analyse des transactions non rapprochées")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class GetBankReconciliationTool(SageBaseTool):
+    name: str = "get_bank_reconciliation"
+    description: str = "Analyse experte des rapprochements bancaires et gestion de trésorerie"
+    args_schema: Type[BaseModel] = GetBankReconciliationInput
+
+    def _run(self, limit: Optional[int] = 20, bank_account_id: Optional[str] = None,
+             from_date: Optional[str] = None, to_date: Optional[str] = None,
+             status: Optional[str] = None, show_transactions: Optional[bool] = True,
+             business_id: Optional[str] = None) -> str:
+        try:
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            # Get bank reconciliations
+            recon_result = sage_api.get_bank_reconciliations(
+                credentials, business_id, limit, 0, bank_account_id,
+                from_date, to_date, status
+            )
+            
+            reconciliations = recon_result.get('$items', [])
+            
+            # Get bank accounts for reference
+            try:
+                accounts_result = sage_api.get_bank_accounts(credentials, business_id)
+                bank_accounts = {acc.get('id'): acc.get('displayed_as', 'N/A')
+                               for acc in accounts_result.get('$items', [])}
+            except:
+                bank_accounts = {}
+            
+            response_parts = []
+            
+            if reconciliations:
+                response_parts.append(f"✅ Rapprochements bancaires ({len(reconciliations)} trouvés):")
+                
+                for recon in reconciliations:
+                    account_name = bank_accounts.get(recon.get('bank_account', {}).get('id'), 'N/A')
+                    ref = recon.get('reference', recon.get('displayed_as', 'N/A'))
+                    date = recon.get('statement_date', 'N/A')
+                    status_info = recon.get('status', {}).get('displayed_as', 'N/A')
+                    balance = recon.get('statement_balance', 'N/A')
+                    
+                    recon_info = f"- {ref} | {account_name} | {date} | {status_info} | Solde: {balance}€"
+                    response_parts.append(recon_info)
+            else:
+                response_parts.append("ℹ️ Aucun rapprochement bancaire trouvé avec ces critères.")
+            
+            # Analyze unreconciled transactions if requested
+            if show_transactions:
+                try:
+                    trans_result = sage_api.get_bank_transactions(
+                        credentials, business_id, 50, 0, bank_account_id,
+                        from_date, to_date, "false"  # Only unreconciled
+                    )
+                    
+                    unreconciled_transactions = trans_result.get('$items', [])
+                    
+                    if unreconciled_transactions:
+                        response_parts.append(f"\n⚠️ Transactions non rapprochées ({len(unreconciled_transactions)} trouvées):")
+                        
+                        total_unreconciled = 0
+                        debit_total = 0
+                        credit_total = 0
+                        
+                        for i, trans in enumerate(unreconciled_transactions[:20]):  # Limit for performance
+                            account_name = bank_accounts.get(trans.get('bank_account', {}).get('id'), 'N/A')
+                            date = trans.get('date', 'N/A')
+                            amount = float(trans.get('amount', 0))
+                            description = trans.get('description', trans.get('narrative', 'N/A'))[:40]
+                            
+                            if amount > 0:
+                                credit_total += amount
+                                amount_sign = "+"
+                            else:
+                                debit_total += abs(amount)
+                                amount_sign = "-"
+                            
+                            total_unreconciled += amount
+                            
+                            trans_info = f"  - {date} | {account_name} | {amount_sign}{abs(amount)}€ | {description}..."
+                            response_parts.append(trans_info)
+                        
+                        # Summary for expert cash flow analysis
+                        response_parts.append(f"\n📊 ANALYSE TRÉSORERIE:")
+                        response_parts.append(f"Total non rapproché: {total_unreconciled}€")
+                        response_parts.append(f"Entrées: +{credit_total}€")
+                        response_parts.append(f"Sorties: -{debit_total}€")
+                        
+                        # Cash flow insights
+                        if total_unreconciled > 1000:
+                            response_parts.append("🔴 Impact trésorerie élevé - Rapprochement prioritaire")
+                        elif total_unreconciled > 100:
+                            response_parts.append("🟡 Impact trésorerie modéré - Surveiller")
+                        else:
+                            response_parts.append("🟢 Impact trésorerie faible")
+                            
+                    else:
+                        response_parts.append("\n✅ Toutes les transactions sont rapprochées")
+                        
+                except Exception as e:
+                    response_parts.append(f"\n⚠️ Impossible d'analyser les transactions: {str(e)}")
+            
+            return "\n".join(response_parts)
+            
+        except Exception as e:
+            return f"❌ Erreur lors de l'analyse des rapprochements bancaires: {str(e)}"
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -1116,6 +1233,7 @@ try:
         GetCreditNotesTool(),
         GetJournalEntriesTool(),
         GetLedgerAccountsTool(),
+        GetBankReconciliationTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),

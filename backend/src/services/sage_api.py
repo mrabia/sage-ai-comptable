@@ -576,4 +576,50 @@ class SageAPIService:
             'attributes': 'all'
         }
         return self._make_request('GET', 'account_types', credentials, business_id, params=params)
+    
+    # ===== BANK RECONCILIATION - Cash Management =====
+    
+    def get_bank_reconciliations(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                                limit: int = 20, offset: int = 0, bank_account_id: Optional[str] = None,
+                                from_date: Optional[str] = None, to_date: Optional[str] = None,
+                                status: Optional[str] = None) -> Dict[str, Any]:
+        """Récupère les rapprochements bancaires pour analyse des flux de trésorerie"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all'
+        }
+        
+        if bank_account_id:
+            params['bank_account_id'] = bank_account_id
+        if from_date:
+            params['from_date'] = from_date
+        if to_date:
+            params['to_date'] = to_date
+        if status:
+            params['status'] = status
+            
+        return self._make_request('GET', 'bank_reconciliations', credentials, business_id, params=params)
+    
+    def get_bank_transactions(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                             limit: int = 50, offset: int = 0, bank_account_id: Optional[str] = None,
+                             from_date: Optional[str] = None, to_date: Optional[str] = None,
+                             reconciled: Optional[str] = None) -> Dict[str, Any]:
+        """Récupère les transactions bancaires pour analyse de rapprochement"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all'
+        }
+        
+        if bank_account_id:
+            params['bank_account_id'] = bank_account_id
+        if from_date:
+            params['from_date'] = from_date
+        if to_date:
+            params['to_date'] = to_date
+        if reconciled is not None:
+            params['reconciled'] = reconciled
+            
+        return self._make_request('GET', 'bank_transactions', credentials, business_id, params=params)
 
