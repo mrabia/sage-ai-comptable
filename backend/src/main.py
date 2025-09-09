@@ -31,6 +31,7 @@ from src.routes.sage_api import sage_api_bp
 from src.routes.test import test_bp
 from src.routes.documents import documents_bp
 from src.routes.accounting_data import accounting_data_bp
+from src.routes.file_upload import file_upload_bp
 
 # Graceful AI loading
 AI_ENABLED = False
@@ -492,6 +493,7 @@ app.register_blueprint(ai_agent_bp, url_prefix='/api')
 app.register_blueprint(test_bp, url_prefix='/api')
 app.register_blueprint(documents_bp, url_prefix='/api')
 app.register_blueprint(accounting_data_bp, url_prefix='/api')
+app.register_blueprint(file_upload_bp, url_prefix='/api/files')
 
 # Création des tables de base de données
 try:

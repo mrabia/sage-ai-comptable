@@ -157,6 +157,49 @@ class SageOperation(db.Model):
         }
 
 
+class FileAttachment(db.Model):
+    __tablename__ = 'file_attachments'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    conversation_id = db.Column(db.Integer, nullable=True)  # Optional: link to specific conversation
+    filename = db.Column(db.String(255), nullable=False)
+    original_filename = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(500), nullable=False)  # Path where file is stored
+    file_size = db.Column(db.Integer, nullable=False)  # Size in bytes
+    file_type = db.Column(db.String(100), nullable=False)  # MIME type
+    file_extension = db.Column(db.String(10), nullable=False)
+    processed_content = db.Column(db.Text, nullable=True)  # Extracted text/data content
+    analysis_metadata = db.Column(db.Text, nullable=True)  # JSON string of analysis results
+    upload_timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    is_processed = db.Column(db.Boolean, default=False)
+    processing_error = db.Column(db.Text, nullable=True)
+    
+    def set_analysis_metadata(self, metadata_dict):
+        """Set file analysis metadata"""
+        self.analysis_metadata = json.dumps(metadata_dict, ensure_ascii=False)
+    
+    def get_analysis_metadata(self):
+        """Get file analysis metadata"""
+        if not self.analysis_metadata:
+            return {}
+        return json.loads(self.analysis_metadata)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'conversation_id': self.conversation_id,
+            'filename': self.filename,
+            'original_filename': self.original_filename,
+            'file_size': self.file_size,
+            'file_type': self.file_type,
+            'file_extension': self.file_extension,
+            'upload_timestamp': self.upload_timestamp.isoformat(),
+            'is_processed': self.is_processed,
+            'analysis_metadata': self.get_analysis_metadata()
+        }
+
 class AutomationRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)

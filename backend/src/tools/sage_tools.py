@@ -1742,6 +1742,14 @@ try:
         GetProfitLossTool(),
         SearchTransactionsTool()
     ]
+    
+    # Ajouter les outils d'analyse de fichiers
+    try:
+        from tools.file_analysis_tools import SAGE_FILE_TOOLS
+        SAGE_TOOLS.extend(SAGE_FILE_TOOLS)
+    except ImportError:
+        print("Warning: File analysis tools not available")
+    
 except Exception as e:
     print(f"Warning: Could not initialize Sage tools: {e}")
     SAGE_TOOLS = []  # Empty list if tools can't be initialized

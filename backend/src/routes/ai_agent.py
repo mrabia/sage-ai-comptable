@@ -23,6 +23,7 @@ def chat_with_agent():
         user_message = data.get('message')
         conversation_id = data.get('conversation_id')
         business_id = data.get('business_id')
+        attached_files = data.get('attached_files', [])  # Liste des IDs de fichiers attachés
         
         # Récupérer l'utilisateur et ses credentials Sage
         user = User.query.get(user_id)
@@ -98,9 +99,44 @@ def chat_with_agent():
                 if confirmation_id:
                     return handle_agent_confirmation(user_id, confirmation_id, user_message, conversation, user_msg)
         
-        # Traiter le message avec l'agent AI
+        # Préparer le contexte des fichiers attachés
+        file_context = ""
+        if attached_files:
+            from src.models.user import FileAttachment
+            file_context = "\n\n📎 FICHIERS ATTACHÉS:\n"
+            
+            for file_id in attached_files:
+                file_attachment = FileAttachment.query.filter_by(
+                    id=file_id, 
+                    user_id=user_id
+                ).first()
+                
+                if file_attachment:
+                    metadata = file_attachment.get_analysis_metadata()
+                    file_context += f"- {file_attachment.original_filename} (ID: {file_id})\n"
+                    file_context += f"  Type: {metadata.get('type', 'Inconnu')} | "
+                    file_context += f"Taille: {file_attachment.file_size} bytes\n"
+                    
+                    if metadata.get('potential_financial_data'):
+                        file_context += f"  💰 Document financier détecté\n"
+                    
+                    if file_attachment.processed_content:
+                        # Ajouter un échantillon du contenu traité
+                        content_sample = file_attachment.processed_content[:200] + "..." if len(file_attachment.processed_content) > 200 else file_attachment.processed_content
+                        file_context += f"  Contenu: {content_sample}\n"
+                    
+                    file_context += "\n"
+            
+            file_context += "💡 Utilisez 'analyze_file' avec l'ID du fichier pour une analyse détaillée et une corrélation avec Sage.\n"
+            file_context += "💡 Utilisez 'compare_files' pour comparer plusieurs fichiers.\n\n"
+        
+        # Traiter le message avec l'agent AI (inclure le contexte des fichiers)
+        enhanced_message = user_message
+        if file_context:
+            enhanced_message = user_message + file_context
+        
         agent_response = agent_manager.process_user_request(
-            user_message, user_id
+            enhanced_message, user_id
         )
         
         # Normaliser la réponse de l'agent (peut être string ou dict)
