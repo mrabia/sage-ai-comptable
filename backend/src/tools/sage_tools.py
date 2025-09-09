@@ -284,6 +284,58 @@ class GetPurchaseInvoicesTool(SageBaseTool):
         except Exception as e:
             return f"❌ Erreur lors de la récupération des factures fournisseurs: {str(e)}"
 
+class GetPaymentsInput(BaseModel):
+    """Input schema for getting contact payments"""
+    limit: Optional[int] = Field(20, description="Number of payments to retrieve")
+    contact_id: Optional[str] = Field(None, description="Filter by specific contact ID")
+    bank_account_id: Optional[str] = Field(None, description="Filter by bank account ID") 
+    transaction_type_id: Optional[str] = Field(None, description="Filter by transaction type ID")
+    from_date: Optional[str] = Field(None, description="Filter from date (YYYY-MM-DD)")
+    to_date: Optional[str] = Field(None, description="Filter to date (YYYY-MM-DD)")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class GetPaymentsTool(SageBaseTool):
+    name: str = "get_payments"
+    description: str = "Récupère la liste des paiements depuis Sage Business Cloud Accounting"
+    args_schema: Type[BaseModel] = GetPaymentsInput
+
+    def _run(self, limit: Optional[int] = 20, contact_id: Optional[str] = None,
+             bank_account_id: Optional[str] = None, transaction_type_id: Optional[str] = None,
+             from_date: Optional[str] = None, to_date: Optional[str] = None,
+             business_id: Optional[str] = None) -> str:
+        try:
+            # Utiliser les credentials automatiquement
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            result = sage_api.get_contact_payments(
+                credentials, business_id, limit, 0, contact_id,
+                bank_account_id, transaction_type_id, from_date, to_date
+            )
+            
+            payments = result.get('$items', [])
+            if not payments:
+                return "ℹ️ Aucun paiement trouvé avec ces critères."
+            
+            payment_list = []
+            for payment in payments:
+                # Extract key information for expert cash flow analysis
+                contact = payment.get('contact', {}).get('displayed_as', 'N/A')
+                amount = payment.get('net_amount', payment.get('total_amount', 'N/A'))
+                date = payment.get('date', 'N/A')
+                reference = payment.get('reference', payment.get('displayed_as', 'N/A'))
+                bank_account = payment.get('bank_account', {}).get('displayed_as', 'N/A')
+                payment_type = payment.get('payment_method', {}).get('displayed_as', 'N/A')
+                
+                payment_info = f"- {reference} | {contact} | {amount}€ | {date} | {bank_account} | {payment_type}"
+                payment_list.append(payment_info)
+            
+            return f"✅ Paiements ({len(payments)} trouvés):\n" + "\n".join(payment_list)
+            
+        except Exception as e:
+            return f"❌ Erreur lors de la récupération des paiements: {str(e)}"
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -634,6 +686,7 @@ try:
         CreateInvoiceTool(),
         GetInvoicesTool(),
         GetPurchaseInvoicesTool(),
+        GetPaymentsTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),

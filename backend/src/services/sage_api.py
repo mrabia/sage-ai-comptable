@@ -265,6 +265,41 @@ class SageAPIService:
         }
         return self._make_request('GET', f'purchase_invoices/{invoice_id}', credentials, business_id, params=params)
     
+    # ===== GESTION DES PAIEMENTS =====
+    
+    def get_contact_payments(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                           limit: int = 20, offset: int = 0, contact_id: Optional[str] = None,
+                           bank_account_id: Optional[str] = None, transaction_type_id: Optional[str] = None,
+                           from_date: Optional[str] = None, to_date: Optional[str] = None) -> Dict[str, Any]:
+        """Récupère la liste des paiements selon l'API officielle Sage"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all'
+        }
+        
+        # Add optional filters based on official API documentation
+        if contact_id:
+            params['contact_id'] = contact_id
+        if bank_account_id:
+            params['bank_account_id'] = bank_account_id
+        if transaction_type_id:
+            params['transaction_type_id'] = transaction_type_id
+        if from_date:
+            params['from_date'] = from_date
+        if to_date:
+            params['to_date'] = to_date
+        
+        return self._make_request('GET', 'contact_payments', credentials, business_id, params=params)
+    
+    def get_contact_payment(self, credentials: Dict[str, Any], payment_id: str,
+                          business_id: Optional[str] = None) -> Dict[str, Any]:
+        """Récupère un paiement spécifique"""
+        params = {
+            'attributes': 'all'
+        }
+        return self._make_request('GET', f'contact_payments/{payment_id}', credentials, business_id, params=params)
+    
     # ===== RAPPORTS FINANCIERS =====
     
     def get_balance_sheet(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
