@@ -653,6 +653,113 @@ class GetJournalEntriesTool(SageBaseTool):
         except Exception as e:
             return f"❌ Erreur lors de la récupération des écritures: {str(e)}"
 
+class GetLedgerAccountsInput(BaseModel):
+    """Input schema for getting ledger accounts"""
+    limit: Optional[int] = Field(50, description="Nombre de comptes à récupérer (max 100)")
+    account_type_id: Optional[str] = Field(None, description="ID du type de compte (assets, liabilities, equity, income, expenses)")
+    search: Optional[str] = Field(None, description="Terme de recherche pour filtrer les comptes")
+    show_balance: Optional[bool] = Field(True, description="Inclure les soldes des comptes")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class GetLedgerAccountsTool(SageBaseTool):
+    name: str = "get_ledger_accounts"
+    description: str = "Récupère le plan comptable complet pour analyse experte de la structure financière"
+    args_schema: Type[BaseModel] = GetLedgerAccountsInput
+
+    def _run(self, limit: Optional[int] = 50, account_type_id: Optional[str] = None,
+             search: Optional[str] = None, show_balance: Optional[bool] = True,
+             business_id: Optional[str] = None) -> str:
+        try:
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            # Get ledger accounts
+            result = sage_api.get_ledger_accounts(
+                credentials, business_id, limit, 0, account_type_id, search, show_balance
+            )
+            
+            accounts = result.get('$items', [])
+            if not accounts:
+                return "ℹ️ Aucun compte trouvé avec ces critères."
+            
+            # Get account types for reference  
+            try:
+                types_result = sage_api.get_account_types(credentials, business_id, 50)
+                account_types = {type_item.get('id'): type_item.get('displayed_as', 'N/A')
+                               for type_item in types_result.get('$items', [])}
+            except:
+                account_types = {}
+            
+            # Group accounts by type for expert analysis
+            accounts_by_type = {}
+            total_assets = 0
+            total_liabilities = 0
+            total_equity = 0
+            total_income = 0
+            total_expenses = 0
+            
+            for account in accounts[:limit]:
+                # Extract key account information
+                code = account.get('ledger_account_code', account.get('nominal_code', 'N/A'))
+                name = account.get('displayed_as', account.get('name', 'N/A'))
+                account_type = account.get('account_type', {})
+                type_name = account_types.get(account_type.get('id'), 
+                                            account_type.get('displayed_as', 'N/A'))
+                
+                # Get balance if available
+                balance = 0
+                balance_info = ""
+                if show_balance and 'balance' in account:
+                    balance = float(account.get('balance', 0))
+                    balance_info = f" | Solde: {balance}€"
+                    
+                    # Aggregate balances by type for financial analysis
+                    type_id = account_type.get('id', '')
+                    if 'asset' in type_id.lower():
+                        total_assets += balance
+                    elif 'liability' in type_id.lower():
+                        total_liabilities += balance
+                    elif 'equity' in type_id.lower():
+                        total_equity += balance
+                    elif 'income' in type_id.lower():
+                        total_income += balance
+                    elif 'expense' in type_id.lower():
+                        total_expenses += balance
+                
+                # Group by account type
+                if type_name not in accounts_by_type:
+                    accounts_by_type[type_name] = []
+                
+                account_info = f"  - {code} | {name}{balance_info}"
+                accounts_by_type[type_name].append(account_info)
+            
+            # Format response with expert financial structure analysis
+            response_parts = [f"✅ Plan comptable ({len(accounts)} comptes):"]
+            
+            for type_name, type_accounts in accounts_by_type.items():
+                response_parts.append(f"\n📂 {type_name}:")
+                response_parts.extend(type_accounts)
+            
+            # Add financial summary for expert analysis if balances included
+            if show_balance and any([total_assets, total_liabilities, total_equity, total_income, total_expenses]):
+                response_parts.append(f"\n\n📊 RÉSUMÉ FINANCIER:")
+                if total_assets: response_parts.append(f"Actifs: {total_assets}€")
+                if total_liabilities: response_parts.append(f"Passifs: {total_liabilities}€")  
+                if total_equity: response_parts.append(f"Capitaux propres: {total_equity}€")
+                if total_income: response_parts.append(f"Produits: {total_income}€")
+                if total_expenses: response_parts.append(f"Charges: {total_expenses}€")
+                
+                # Basic accounting equation check
+                equity_balance = total_assets - total_liabilities
+                equation_check = "✅ Équation respectée" if abs(equity_balance - total_equity) < 1 else f"⚠️ Écart: {equity_balance - total_equity}€"
+                response_parts.append(f"Équation comptable: {equation_check}")
+            
+            return "\n".join(response_parts)
+            
+        except Exception as e:
+            return f"❌ Erreur lors de la récupération du plan comptable: {str(e)}"
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -1008,6 +1115,7 @@ try:
         GetAgingAnalysisTool(),
         GetCreditNotesTool(),
         GetJournalEntriesTool(),
+        GetLedgerAccountsTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),

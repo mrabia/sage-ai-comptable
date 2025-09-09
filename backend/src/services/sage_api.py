@@ -545,4 +545,35 @@ class SageAPIService:
             'attributes': 'all'
         }
         return self._make_request('GET', 'journal_codes', credentials, business_id, params=params)
+    
+    # ===== LEDGER ACCOUNTS - Chart of Accounts Management =====
+    
+    def get_ledger_accounts(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                           limit: int = 50, offset: int = 0, account_type_id: Optional[str] = None,
+                           search: Optional[str] = None, show_balance: bool = True) -> Dict[str, Any]:
+        """Récupère le plan comptable avec analyse experte des comptes"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all'
+        }
+        
+        if account_type_id:
+            params['account_type_id'] = account_type_id
+        if search:
+            params['search'] = search
+        if show_balance:
+            params['show_balance'] = 'true'
+            
+        return self._make_request('GET', 'ledger_accounts', credentials, business_id, params=params)
+    
+    def get_account_types(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                         limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+        """Récupère les types de comptes disponibles"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all'
+        }
+        return self._make_request('GET', 'account_types', credentials, business_id, params=params)
 
