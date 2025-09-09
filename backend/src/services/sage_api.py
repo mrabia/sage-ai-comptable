@@ -300,6 +300,34 @@ class SageAPIService:
         }
         return self._make_request('GET', f'contact_payments/{payment_id}', credentials, business_id, params=params)
     
+    # ===== GESTION FISCALE ET TVA =====
+    
+    def get_tax_returns(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                       limit: int = 20, offset: int = 0, from_period_start_date: Optional[str] = None,
+                       to_period_start_date: Optional[str] = None) -> Dict[str, Any]:
+        """Récupère les déclarations fiscales selon l'API officielle Sage"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all'
+        }
+        
+        # Add optional filters based on official API documentation
+        if from_period_start_date:
+            params['from_period_start_date'] = from_period_start_date
+        if to_period_start_date:
+            params['to_period_start_date'] = to_period_start_date
+        
+        return self._make_request('GET', 'tax_returns', credentials, business_id, params=params)
+    
+    def get_tax_return(self, credentials: Dict[str, Any], tax_return_id: str,
+                      business_id: Optional[str] = None) -> Dict[str, Any]:
+        """Récupère une déclaration fiscale spécifique"""
+        params = {
+            'attributes': 'all'
+        }
+        return self._make_request('GET', f'tax_returns/{tax_return_id}', credentials, business_id, params=params)
+    
     # ===== RAPPORTS FINANCIERS =====
     
     def get_balance_sheet(self, credentials: Dict[str, Any], business_id: Optional[str] = None,

@@ -336,6 +336,52 @@ class GetPaymentsTool(SageBaseTool):
         except Exception as e:
             return f"❌ Erreur lors de la récupération des paiements: {str(e)}"
 
+class GetTaxReturnsInput(BaseModel):
+    """Input schema for getting tax returns"""
+    limit: Optional[int] = Field(20, description="Number of tax returns to retrieve")
+    from_period_start_date: Optional[str] = Field(None, description="Filter from period start date (YYYY-MM-DD)")
+    to_period_start_date: Optional[str] = Field(None, description="Filter to period start date (YYYY-MM-DD)")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class GetTaxReturnsTool(SageBaseTool):
+    name: str = "get_tax_returns"
+    description: str = "Récupère les déclarations fiscales et TVA depuis Sage Business Cloud Accounting"
+    args_schema: Type[BaseModel] = GetTaxReturnsInput
+
+    def _run(self, limit: Optional[int] = 20, from_period_start_date: Optional[str] = None,
+             to_period_start_date: Optional[str] = None, business_id: Optional[str] = None) -> str:
+        try:
+            # Utiliser les credentials automatiquement
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            result = sage_api.get_tax_returns(
+                credentials, business_id, limit, 0, from_period_start_date, to_period_start_date
+            )
+            
+            tax_returns = result.get('$items', [])
+            if not tax_returns:
+                return "ℹ️ Aucune déclaration fiscale trouvée avec ces critères."
+            
+            tax_return_list = []
+            for tax_return in tax_returns:
+                # Extract key information for expert tax compliance analysis
+                period = tax_return.get('reporting_period', {}).get('displayed_as', 'N/A')
+                status = tax_return.get('status', {}).get('displayed_as', 'N/A')
+                scheme = tax_return.get('tax_scheme', {}).get('displayed_as', 'N/A')
+                due_date = tax_return.get('due_date', 'N/A')
+                submitted_date = tax_return.get('submitted_date', 'Non soumis')
+                total_amount = tax_return.get('total_amount', 'N/A')
+                
+                tax_return_info = f"- {period} | {scheme} | {status} | Due: {due_date} | Submitted: {submitted_date} | {total_amount}€"
+                tax_return_list.append(tax_return_info)
+            
+            return f"✅ Déclarations fiscales ({len(tax_returns)} trouvées):\n" + "\n".join(tax_return_list)
+            
+        except Exception as e:
+            return f"❌ Erreur lors de la récupération des déclarations fiscales: {str(e)}"
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -687,6 +733,7 @@ try:
         GetInvoicesTool(),
         GetPurchaseInvoicesTool(),
         GetPaymentsTool(),
+        GetTaxReturnsTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),
