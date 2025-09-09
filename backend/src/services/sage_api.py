@@ -679,4 +679,73 @@ class SageAPIService:
         sage_request = {'purchase_invoice': purchase_invoice}
         
         return self._make_request('POST', 'purchase_invoices', credentials, business_id, json=sage_request)
+    
+    # ===== FIXED ASSETS ANALYSIS - Asset Management =====
+    
+    def get_fixed_assets_analysis(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                                 limit: int = 50, from_date: Optional[str] = None,
+                                 to_date: Optional[str] = None) -> Dict[str, Any]:
+        """Analyse les immobilisations via les comptes comptables et transactions"""
+        # Récupérer les comptes d'actifs immobilisés (comptes 2xxx en France)
+        accounts_result = self.get_ledger_accounts(
+            credentials, business_id, limit=100, show_balance=True
+        )
+        
+        # Filtrer les comptes d'immobilisations
+        fixed_asset_accounts = []
+        for account in accounts_result.get('$items', []):
+            account_code = account.get('ledger_account_code', account.get('nominal_code', ''))
+            account_type = account.get('account_type', {}).get('displayed_as', '').lower()
+            
+            # Identifier les comptes d'immobilisations
+            if (account_code and (
+                account_code.startswith('2') or  # Comptes classe 2 (France)
+                'asset' in account_type or
+                'fixed' in account_type or
+                'plant' in account_type or
+                'equipment' in account_type or
+                'machinery' in account_type or
+                'building' in account_type or
+                'land' in account_type
+            )):
+                fixed_asset_accounts.append(account)
+        
+        # Analyser les transactions sur ces comptes si demandé
+        asset_transactions = []
+        if from_date or to_date:
+            try:
+                # Récupérer les écritures sur la période
+                journal_result = self.get_journal_entries(
+                    credentials, business_id, limit=200, from_date=from_date, to_date=to_date
+                )
+                
+                for entry in journal_result.get('$items', []):
+                    for line in entry.get('journal_lines', []):
+                        line_account_id = line.get('ledger_account', {}).get('id')
+                        # Vérifier si cette ligne concerne un compte d'immobilisation
+                        for asset_account in fixed_asset_accounts:
+                            if asset_account.get('id') == line_account_id:
+                                asset_transactions.append({
+                                    'entry_date': entry.get('date'),
+                                    'entry_ref': entry.get('reference', entry.get('displayed_as')),
+                                    'account_code': asset_account.get('ledger_account_code'),
+                                    'account_name': asset_account.get('displayed_as'),
+                                    'description': line.get('description', entry.get('description', '')),
+                                    'debit': line.get('debit', 0),
+                                    'credit': line.get('credit', 0),
+                                    'net_amount': float(line.get('debit', 0)) - float(line.get('credit', 0))
+                                })
+                                break
+            except Exception as e:
+                # Si l'analyse des transactions échoue, continuer avec les comptes seulement
+                pass
+        
+        return {
+            'fixed_asset_accounts': fixed_asset_accounts,
+            'asset_transactions': asset_transactions,
+            'analysis_period': {
+                'from_date': from_date,
+                'to_date': to_date
+            }
+        }
 

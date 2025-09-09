@@ -970,6 +970,155 @@ Total: {total_amount}€
         except Exception as e:
             return f"❌ Erreur lors de la création de la facture fournisseur: {str(e)}"
 
+class GetFixedAssetsInput(BaseModel):
+    """Input schema for getting fixed assets analysis"""
+    limit: Optional[int] = Field(50, description="Nombre maximum d'actifs à analyser")
+    from_date: Optional[str] = Field(None, description="Date de début pour analyser les mouvements (YYYY-MM-DD)")
+    to_date: Optional[str] = Field(None, description="Date de fin pour analyser les mouvements (YYYY-MM-DD)")
+    include_transactions: Optional[bool] = Field(True, description="Inclure l'analyse des mouvements sur la période")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class GetFixedAssetsTool(SageBaseTool):
+    name: str = "get_fixed_assets"
+    description: str = "Analyse experte des immobilisations et suivi de la dépréciation"
+    args_schema: Type[BaseModel] = GetFixedAssetsInput
+
+    def _run(self, limit: Optional[int] = 50, from_date: Optional[str] = None,
+             to_date: Optional[str] = None, include_transactions: Optional[bool] = True,
+             business_id: Optional[str] = None) -> str:
+        try:
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            # Obtenir l'analyse des immobilisations
+            if include_transactions and (from_date or to_date):
+                result = sage_api.get_fixed_assets_analysis(
+                    credentials, business_id, limit, from_date, to_date
+                )
+            else:
+                result = sage_api.get_fixed_assets_analysis(
+                    credentials, business_id, limit
+                )
+            
+            fixed_asset_accounts = result.get('fixed_asset_accounts', [])
+            asset_transactions = result.get('asset_transactions', [])
+            
+            if not fixed_asset_accounts:
+                return "ℹ️ Aucune immobilisation détectée dans le plan comptable."
+            
+            response_parts = [f"🏢 Analyse des immobilisations ({len(fixed_asset_accounts)} comptes détectés):"]
+            
+            # Analyse des comptes d'immobilisations
+            total_gross_value = 0
+            total_depreciation = 0
+            total_net_value = 0
+            
+            assets_by_category = {}
+            
+            for account in fixed_asset_accounts:
+                code = account.get('ledger_account_code', account.get('nominal_code', 'N/A'))
+                name = account.get('displayed_as', account.get('name', 'N/A'))
+                balance = float(account.get('balance', 0))
+                account_type = account.get('account_type', {}).get('displayed_as', 'N/A')
+                
+                # Catégoriser les immobilisations
+                category = "Autres immobilisations"
+                if code.startswith('20') or 'incorporel' in name.lower():
+                    category = "Immobilisations incorporelles"
+                elif code.startswith('21') or any(word in name.lower() for word in ['terrain', 'land', 'foncier']):
+                    category = "Terrains et constructions"
+                elif code.startswith('22') or any(word in name.lower() for word in ['materiel', 'equipment', 'machinery', 'outillage']):
+                    category = "Matériel et équipements"
+                elif code.startswith('23') or any(word in name.lower() for word in ['immobilisation', 'progress', 'cours']):
+                    category = "Immobilisations en cours"
+                elif code.startswith('28') or any(word in name.lower() for word in ['amortissement', 'depreciation']):
+                    category = "Amortissements"
+                    total_depreciation += abs(balance)  # Les amortissements sont généralement négatifs
+                else:
+                    total_gross_value += balance
+                
+                if category not in assets_by_category:
+                    assets_by_category[category] = []
+                
+                # Indicateur de dépréciation
+                depreciation_info = ""
+                if 'amortissement' in name.lower() or 'depreciation' in name.lower():
+                    depreciation_info = " 📉"
+                elif balance > 0:
+                    total_gross_value += balance
+                
+                asset_info = f"  - {code} | {name} | {balance}€{depreciation_info}"
+                assets_by_category[category].append(asset_info)
+            
+            # Afficher par catégorie
+            for category, assets in assets_by_category.items():
+                response_parts.append(f"\n📂 {category}:")
+                response_parts.extend(assets)
+            
+            # Calcul de la valeur nette
+            total_net_value = total_gross_value - total_depreciation
+            
+            # Résumé financier des immobilisations
+            response_parts.append(f"\n\n💰 RÉSUMÉ PATRIMONIAL:")
+            response_parts.append(f"Valeur brute: {total_gross_value:,.2f}€")
+            if total_depreciation > 0:
+                response_parts.append(f"Amortissements: -{total_depreciation:,.2f}€")
+                response_parts.append(f"Valeur nette: {total_net_value:,.2f}€")
+                depreciation_rate = (total_depreciation / (total_gross_value + total_depreciation)) * 100 if (total_gross_value + total_depreciation) > 0 else 0
+                response_parts.append(f"Taux d'amortissement: {depreciation_rate:.1f}%")
+            
+            # Analyse des mouvements si demandée
+            if include_transactions and asset_transactions:
+                response_parts.append(f"\n\n📈 MOUVEMENTS D'IMMOBILISATIONS ({len(asset_transactions)} opérations):")
+                
+                acquisitions = []
+                depreciations = []
+                disposals = []
+                
+                for trans in asset_transactions[:20]:  # Limiter pour la performance
+                    date = trans.get('entry_date', 'N/A')
+                    account = f"{trans.get('account_code', 'N/A')} - {trans.get('account_name', 'N/A')}"
+                    description = trans.get('description', '')[:40]
+                    amount = trans.get('net_amount', 0)
+                    
+                    if amount > 0:
+                        acquisitions.append(f"  + {date} | {account} | +{amount}€ | {description}...")
+                    elif amount < 0:
+                        if 'amortissement' in trans.get('account_name', '').lower():
+                            depreciations.append(f"  📉 {date} | {account} | {amount}€ | {description}...")
+                        else:
+                            disposals.append(f"  - {date} | {account} | {amount}€ | {description}...")
+                
+                if acquisitions:
+                    response_parts.append("\n🔵 Acquisitions:")
+                    response_parts.extend(acquisitions[:5])
+                
+                if depreciations:
+                    response_parts.append("\n📉 Amortissements:")
+                    response_parts.extend(depreciations[:5])
+                
+                if disposals:
+                    response_parts.append("\n🔴 Cessions/Sorties:")
+                    response_parts.extend(disposals[:5])
+                
+                if len(asset_transactions) > 20:
+                    response_parts.append(f"\n... et {len(asset_transactions) - 20} autres mouvements")
+            
+            # Conseils d'expert
+            response_parts.append(f"\n\n🎯 ANALYSE EXPERTE:")
+            if total_net_value > total_gross_value * 0.8:
+                response_parts.append("✅ Actifs récents - Faible taux d'amortissement")
+            elif total_net_value < total_gross_value * 0.3:
+                response_parts.append("⚠️ Actifs anciens - Envisager le renouvellement")
+            else:
+                response_parts.append("🟡 Actifs d'âge moyen - Surveiller l'amortissement")
+            
+            return "\n".join(response_parts)
+            
+        except Exception as e:
+            return f"❌ Erreur lors de l'analyse des immobilisations: {str(e)}"
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -1328,6 +1477,7 @@ try:
         GetLedgerAccountsTool(),
         GetBankReconciliationTool(),
         CreatePurchaseInvoiceTool(),
+        GetFixedAssetsTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),
