@@ -677,8 +677,31 @@ def execute_real_sage_action(user_id, action_type, planned_action):
             today = datetime.now().strftime("%Y-%m-%d")
             due_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
             
+            # First, try to get the first available customer
+            try:
+                from src.tools.sage_tools import SAGE_TOOLS
+                get_customers_tool = None
+                for tool in SAGE_TOOLS:
+                    if getattr(tool, 'name', '') == 'get_customers':
+                        get_customers_tool = tool
+                        break
+                
+                if get_customers_tool:
+                    customers_result = get_customers_tool._run(limit=1)
+                    # Extract customer ID from the result (format: "ID: customer_id")
+                    import re
+                    customer_match = re.search(r'ID:\s*([^,)]+)', customers_result)
+                    if customer_match:
+                        customer_id = customer_match.group(1).strip()
+                    else:
+                        customer_id = "DEMO_CUSTOMER"  # Fallback
+                else:
+                    customer_id = "DEMO_CUSTOMER"  # Fallback if tool not found
+            except Exception:
+                customer_id = "DEMO_CUSTOMER"  # Fallback on any error
+            
             result = sage_tool._run(
-                customer_id="CUSTOMER_001",  # ID client par défaut pour les tests
+                customer_id=customer_id,
                 items=items,
                 date=today,
                 due_date=due_date,
