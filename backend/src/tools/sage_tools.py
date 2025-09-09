@@ -577,6 +577,82 @@ class GetCreditNotesTool(SageBaseTool):
         except Exception as e:
             return f"❌ Erreur lors de la récupération des avoirs: {str(e)}"
 
+class GetJournalEntriesInput(BaseModel):
+    """Input schema for getting journal entries"""
+    limit: Optional[int] = Field(20, description="Nombre d'écritures à récupérer (max 100)")
+    from_date: Optional[str] = Field(None, description="Date de début (YYYY-MM-DD)")
+    to_date: Optional[str] = Field(None, description="Date de fin (YYYY-MM-DD)")
+    journal_code_id: Optional[str] = Field(None, description="ID du code journal spécifique")
+    contact_id: Optional[str] = Field(None, description="ID du contact")
+    search: Optional[str] = Field(None, description="Terme de recherche")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class GetJournalEntriesTool(SageBaseTool):
+    name: str = "get_journal_entries"
+    description: str = "Récupère les écritures comptables pour audit et analyse experte des mouvements financiers"
+    args_schema: Type[BaseModel] = GetJournalEntriesInput
+
+    def _run(self, limit: Optional[int] = 20, from_date: Optional[str] = None,
+             to_date: Optional[str] = None, journal_code_id: Optional[str] = None,
+             contact_id: Optional[str] = None, search: Optional[str] = None,
+             business_id: Optional[str] = None) -> str:
+        try:
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            # Get journal entries
+            result = sage_api.get_journal_entries(
+                credentials, business_id, limit, 0, from_date, to_date,
+                journal_code_id, contact_id, search
+            )
+            
+            entries = result.get('$items', [])
+            if not entries:
+                return "ℹ️ Aucune écriture comptable trouvée avec ces critères."
+            
+            # Get journal codes for reference
+            try:
+                codes_result = sage_api.get_journal_codes(credentials, business_id, 50)
+                journal_codes = {code.get('id'): code.get('displayed_as', 'N/A') 
+                               for code in codes_result.get('$items', [])}
+            except:
+                journal_codes = {}
+            
+            # Format entries for expert analysis
+            entry_list = []
+            total_debit = 0
+            total_credit = 0
+            
+            for entry in entries[:limit]:
+                # Extract key journal entry data
+                ref = entry.get('reference', entry.get('displayed_as', 'N/A'))
+                date = entry.get('date', 'N/A')
+                journal_code = journal_codes.get(entry.get('journal_code', {}).get('id'), 
+                                                entry.get('journal_code', {}).get('displayed_as', 'N/A'))
+                description = entry.get('description', entry.get('narrative', 'N/A'))
+                
+                # Calculate totals from journal lines
+                lines = entry.get('journal_lines', [])
+                entry_debit = sum(float(line.get('debit', 0)) for line in lines)
+                entry_credit = sum(float(line.get('credit', 0)) for line in lines)
+                
+                total_debit += entry_debit  
+                total_credit += entry_credit
+                
+                # Format entry info with accounting details
+                entry_info = f"- {ref} | {date} | {journal_code} | Débit: {entry_debit}€ | Crédit: {entry_credit}€ | {description[:50]}..."
+                entry_list.append(entry_info)
+            
+            # Add summary for expert analysis
+            balance_check = "✅ Équilibré" if abs(total_debit - total_credit) < 0.01 else f"⚠️ Déséquilibré ({total_debit - total_credit}€)"
+            summary = f"\n\n📊 RÉSUMÉ COMPTABLE:\nTotal Débit: {total_debit}€\nTotal Crédit: {total_credit}€\nStatut: {balance_check}"
+            
+            return f"✅ Écritures comptables ({len(entries)} trouvées):\n" + "\n".join(entry_list) + summary
+            
+        except Exception as e:
+            return f"❌ Erreur lors de la récupération des écritures: {str(e)}"
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -931,6 +1007,7 @@ try:
         GetTaxReturnsTool(),
         GetAgingAnalysisTool(),
         GetCreditNotesTool(),
+        GetJournalEntriesTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),

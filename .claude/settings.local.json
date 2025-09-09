@@ -4,7 +4,8 @@
       "mcp__ruv-swarm",
       "mcp__claude-flow",
       "Bash(python:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }

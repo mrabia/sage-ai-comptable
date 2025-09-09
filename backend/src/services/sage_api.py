@@ -509,4 +509,40 @@ class SageAPIService:
     def get_business_info(self, credentials: Dict[str, Any], business_id: str) -> Dict[str, Any]:
         """Récupère les informations d'un business"""
         return self._make_request('GET', f'businesses/{business_id}', credentials, business_id)
+    
+    # ===== JOURNAL ENTRIES - Expert Accounting Analysis =====
+    
+    def get_journal_entries(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                           limit: int = 20, offset: int = 0, from_date: Optional[str] = None,
+                           to_date: Optional[str] = None, journal_code_id: Optional[str] = None,
+                           contact_id: Optional[str] = None, search: Optional[str] = None) -> Dict[str, Any]:
+        """Récupère les écritures comptables pour analyse experte des mouvements"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all'
+        }
+        
+        if from_date:
+            params['from_date'] = from_date
+        if to_date:
+            params['to_date'] = to_date  
+        if journal_code_id:
+            params['journal_code_id'] = journal_code_id
+        if contact_id:
+            params['contact_id'] = contact_id
+        if search:
+            params['search'] = search
+            
+        return self._make_request('GET', 'journal_entries', credentials, business_id, params=params)
+    
+    def get_journal_codes(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                         limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+        """Récupère les codes journaux disponibles"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all'
+        }
+        return self._make_request('GET', 'journal_codes', credentials, business_id, params=params)
 
