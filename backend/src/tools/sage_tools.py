@@ -1248,6 +1248,132 @@ Statut: {entry_status}
         except Exception as e:
             return f"❌ Erreur lors de la création de l'écriture comptable: {str(e)}"
 
+class GetVATReturnInput(BaseModel):
+    """Input schema for getting VAT returns analysis"""
+    limit: Optional[int] = Field(20, description="Nombre de déclarations à analyser")
+    from_date: Optional[str] = Field(None, description="Date de début pour l'analyse (YYYY-MM-DD)")
+    to_date: Optional[str] = Field(None, description="Date de fin pour l'analyse (YYYY-MM-DD)")
+    include_detailed_analysis: Optional[bool] = Field(True, description="Inclure l'analyse détaillée TVA collectée/déductible")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class GetVATReturnTool(SageBaseTool):
+    name: str = "get_vat_return"
+    description: str = "Analyse avancée des déclarations TVA avec conformité et détails fiscaux experts"
+    args_schema: Type[BaseModel] = GetVATReturnInput
+
+    def _run(self, limit: Optional[int] = 20, from_date: Optional[str] = None,
+             to_date: Optional[str] = None, include_detailed_analysis: Optional[bool] = True,
+             business_id: Optional[str] = None) -> str:
+        try:
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            # Obtenir l'analyse avancée des déclarations TVA
+            result = sage_api.get_vat_returns_analysis(
+                credentials, business_id, limit, from_date, to_date
+            )
+            
+            basic_returns = result.get('basic_returns', {})
+            vat_breakdown = result.get('vat_breakdown', {})
+            compliance_checks = result.get('compliance_checks', [])
+            
+            tax_returns = basic_returns.get('$items', [])
+            
+            response_parts = [f"🏛️ Analyse des déclarations TVA ({len(tax_returns)} trouvées):"]
+            
+            if not tax_returns:
+                response_parts.append("ℹ️ Aucune déclaration TVA trouvée pour cette période.")
+            else:
+                # Afficher les déclarations
+                total_tax_due = 0
+                
+                for tax_return in tax_returns:
+                    ref = tax_return.get('reference', tax_return.get('displayed_as', 'N/A'))
+                    period_start = tax_return.get('period_start_date', 'N/A')
+                    period_end = tax_return.get('period_end_date', 'N/A')
+                    status = tax_return.get('status', {}).get('displayed_as', 'N/A')
+                    tax_amount = float(tax_return.get('total_tax_due', 0))
+                    total_tax_due += tax_amount
+                    
+                    return_info = f"- {ref} | {period_start} → {period_end} | {tax_amount}€ | {status}"
+                    response_parts.append(return_info)
+                
+                # Résumé des déclarations
+                response_parts.append(f"\n💰 Total TVA due: {total_tax_due:,.2f}€")
+            
+            # Analyse détaillée TVA si demandée et disponible
+            if include_detailed_analysis and vat_breakdown and 'error' not in vat_breakdown:
+                response_parts.append(f"\n\n📊 ANALYSE DÉTAILLÉE TVA:")
+                
+                vat_collected = vat_breakdown.get('vat_collected', 0)
+                vat_deductible = vat_breakdown.get('vat_deductible', 0)
+                net_vat_due = vat_breakdown.get('net_vat_due', 0)
+                sales_count = vat_breakdown.get('sales_count', 0)
+                purchase_count = vat_breakdown.get('purchase_count', 0)
+                
+                response_parts.append(f"TVA collectée (ventes): +{vat_collected:,.2f}€ ({sales_count} factures)")
+                response_parts.append(f"TVA déductible (achats): -{vat_deductible:,.2f}€ ({purchase_count} factures)")
+                response_parts.append(f"TVA nette due: {net_vat_due:,.2f}€")
+                
+                # Ratio d'analyse
+                if vat_collected > 0:
+                    deduction_ratio = (vat_deductible / vat_collected) * 100
+                    response_parts.append(f"Ratio de déduction: {deduction_ratio:.1f}%")
+                
+                # Conseils d'expert
+                if net_vat_due < 0:
+                    response_parts.append("💡 Crédit de TVA - Demander le remboursement")
+                elif deduction_ratio > 80:
+                    response_parts.append("⚠️ Ratio de déduction élevé - Vérifier la conformité")
+                elif deduction_ratio < 20:
+                    response_parts.append("✅ Structure TVA saine - Bon niveau de marge")
+            
+            elif vat_breakdown and 'error' in vat_breakdown:
+                response_parts.append(f"\n⚠️ {vat_breakdown['error']}")
+            
+            # Vérifications de conformité
+            if compliance_checks:
+                response_parts.append(f"\n\n🔍 CONTRÔLES DE CONFORMITÉ:")
+                
+                for check in compliance_checks:
+                    severity_icon = {
+                        'high': '🔴',
+                        'medium': '🟡',
+                        'low': '🟢'
+                    }.get(check.get('severity'), '🔵')
+                    
+                    check_message = f"{severity_icon} {check.get('message', 'Contrôle non spécifié')}"
+                    response_parts.append(check_message)
+            else:
+                response_parts.append(f"\n\n✅ CONFORMITÉ: Aucun problème détecté")
+            
+            # Recommandations d'expert
+            response_parts.append(f"\n\n🎯 RECOMMANDATIONS EXPERTES:")
+            
+            if len(tax_returns) == 0:
+                response_parts.append("🔴 URGENT: Vérifier les obligations déclaratives TVA")
+            elif len(tax_returns) < 4 and from_date and to_date:
+                response_parts.append("🟡 Surveiller la fréquence des déclarations")
+            else:
+                response_parts.append("✅ Suivi déclaratif conforme")
+            
+            # Conseils de trésorerie
+            if total_tax_due > 10000:
+                response_parts.append("💸 Impact trésorerie significatif - Planifier les versements")
+            elif total_tax_due > 0:
+                response_parts.append("💰 Provisions recommandées pour les échéances TVA")
+            
+            # Période d'analyse
+            if from_date or to_date:
+                period_info = f"Période analysée: {from_date or 'Début'} → {to_date or 'Fin'}"
+                response_parts.append(f"\n📅 {period_info}")
+            
+            return "\n".join(response_parts)
+            
+        except Exception as e:
+            return f"❌ Erreur lors de l'analyse des déclarations TVA: {str(e)}"
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -1608,6 +1734,7 @@ try:
         CreatePurchaseInvoiceTool(),
         GetFixedAssetsTool(),
         CreateJournalEntryTool(),
+        GetVATReturnTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),

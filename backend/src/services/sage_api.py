@@ -819,4 +819,95 @@ class SageAPIService:
             'attributes': 'all'
         }
         return self._make_request('GET', 'transaction_types', credentials, business_id, params=params)
+    
+    # ===== VAT RETURNS - Advanced Tax Compliance =====
+    
+    def get_vat_returns_analysis(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                                limit: int = 20, from_date: Optional[str] = None,
+                                to_date: Optional[str] = None) -> Dict[str, Any]:
+        """Analyse avancée des déclarations TVA avec détails de conformité"""
+        # Récupérer les déclarations de base
+        basic_returns = self.get_tax_returns(credentials, business_id, limit, 0, from_date, to_date)
+        
+        # Enrichir avec des analyses avancées
+        enhanced_analysis = {
+            'basic_returns': basic_returns,
+            'vat_breakdown': {},
+            'compliance_checks': [],
+            'period_analysis': {
+                'from_date': from_date,
+                'to_date': to_date
+            }
+        }
+        
+        # Analyser les taux de TVA pour la période si spécifiée
+        if from_date or to_date:
+            try:
+                # Récupérer les factures de vente sur la période
+                sales_result = self.get_invoices(
+                    credentials, business_id, limit=100, offset=0,
+                    from_date=from_date, to_date=to_date
+                )
+                
+                # Récupérer les factures d'achat sur la période
+                purchase_result = self.get_purchase_invoices(
+                    credentials, business_id, limit=100, offset=0,
+                    from_date=from_date, to_date=to_date
+                )
+                
+                # Analyser la TVA collectée (ventes)
+                vat_collected = 0
+                vat_deductible = 0
+                
+                for invoice in sales_result.get('$items', []):
+                    vat_amount = float(invoice.get('tax_amount', 0))
+                    vat_collected += vat_amount
+                
+                for purchase in purchase_result.get('$items', []):
+                    vat_amount = float(purchase.get('tax_amount', 0))
+                    vat_deductible += vat_amount
+                
+                enhanced_analysis['vat_breakdown'] = {
+                    'vat_collected': vat_collected,
+                    'vat_deductible': vat_deductible,
+                    'net_vat_due': vat_collected - vat_deductible,
+                    'sales_count': len(sales_result.get('$items', [])),
+                    'purchase_count': len(purchase_result.get('$items', []))
+                }
+                
+            except Exception as e:
+                enhanced_analysis['vat_breakdown'] = {
+                    'error': f'Impossible d\'analyser les détails TVA: {str(e)}'
+                }
+        
+        # Vérifications de conformité
+        compliance_checks = []
+        
+        # Vérifier la fréquence des déclarations
+        returns_count = len(basic_returns.get('$items', []))
+        if returns_count == 0:
+            compliance_checks.append({
+                'type': 'missing_returns',
+                'severity': 'high',
+                'message': 'Aucune déclaration TVA trouvée sur la période'
+            })
+        elif returns_count < 3 and (from_date and to_date):
+            # Simple check si plus de 3 mois entre les dates
+            from datetime import datetime
+            try:
+                start = datetime.strptime(from_date, '%Y-%m-%d')
+                end = datetime.strptime(to_date, '%Y-%m-%d')
+                months_diff = (end - start).days // 30
+                if months_diff > returns_count * 2:
+                    compliance_checks.append({
+                        'type': 'infrequent_returns',
+                        'severity': 'medium',
+                        'message': f'Peu de déclarations ({returns_count}) pour une période de {months_diff} mois'
+                    })
+            except:
+                pass
+        
+        enhanced_analysis['compliance_checks'] = compliance_checks
+        
+        return enhanced_analysis
 
