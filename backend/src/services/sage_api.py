@@ -622,4 +622,61 @@ class SageAPIService:
             params['reconciled'] = reconciled
             
         return self._make_request('GET', 'bank_transactions', credentials, business_id, params=params)
+    
+    # ===== CREATE PURCHASE INVOICE - Complete P2P Cycle =====
+    
+    def create_purchase_invoice(self, credentials: Dict[str, Any], invoice_data: Dict[str, Any], 
+                               business_id: Optional[str] = None) -> Dict[str, Any]:
+        """Crée une nouvelle facture fournisseur selon l'API officielle Sage"""
+        # Construire l'objet facture selon le schéma officiel Sage
+        purchase_invoice = {
+            "contact_id": invoice_data['contact_id'],
+            "reference": invoice_data.get('reference', ''),
+            "date": invoice_data['date'],
+            "due_date": invoice_data.get('due_date', invoice_data['date']),
+            "currency_id": invoice_data.get('currency_id', 'GBP'),  # Default to GBP
+            "exchange_rate": invoice_data.get('exchange_rate', 1.0)
+        }
+        
+        # Champs optionnels pour factures fournisseurs
+        optional_fields = {
+            'vendor_reference': invoice_data.get('vendor_reference'),
+            'notes': invoice_data.get('notes'),
+            'tax_address_region_id': invoice_data.get('tax_address_region_id'),
+            'tax_calculation_method': invoice_data.get('tax_calculation_method', 'compound')
+        }
+        
+        for field, value in optional_fields.items():
+            if value is not None:
+                purchase_invoice[field] = value
+        
+        # Traitement des lignes de facture
+        if 'items' in invoice_data and invoice_data['items']:
+            purchase_invoice['invoice_lines'] = []
+            
+            for item in invoice_data['items']:
+                line = {
+                    "ledger_account_id": item.get('ledger_account_id'),
+                    "description": item.get('description', ''),
+                    "quantity": float(item.get('quantity', 1)),
+                    "unit_price": float(item.get('unit_price', 0)),
+                    "net_amount": float(item.get('net_amount', 0)),
+                    "tax_rate_id": item.get('tax_rate_id')
+                }
+                
+                # Calcul automatique du montant net si non fourni
+                if not line['net_amount'] and line['quantity'] and line['unit_price']:
+                    line['net_amount'] = line['quantity'] * line['unit_price']
+                
+                # Champs optionnels pour les lignes
+                if item.get('trade_of_asset'):
+                    line['trade_of_asset'] = item['trade_of_asset']
+                if item.get('eu_goods_services_type_id'):
+                    line['eu_goods_services_type_id'] = item['eu_goods_services_type_id']
+                
+                purchase_invoice['invoice_lines'].append(line)
+        
+        sage_request = {'purchase_invoice': purchase_invoice}
+        
+        return self._make_request('POST', 'purchase_invoices', credentials, business_id, json=sage_request)
 

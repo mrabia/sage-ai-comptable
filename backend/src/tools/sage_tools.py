@@ -13,12 +13,13 @@ except ImportError:
                 def __init__(self, **kwargs):
                     for key, value in kwargs.items():
                         setattr(self, key, value)
-from typing import Type, Dict, Any, Optional
+from typing import Type, Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 from services.sage_auth import SageOAuth2Service
 from services.sage_api import SageAPIService
 import json
 import os
+import time
 
 # Configuration OAuth2 Sage
 SAGE_CLIENT_ID = os.getenv('SAGE_CLIENT_ID', 'your_client_id')
@@ -877,6 +878,98 @@ class GetBankReconciliationTool(SageBaseTool):
         except Exception as e:
             return f"❌ Erreur lors de l'analyse des rapprochements bancaires: {str(e)}"
 
+class CreatePurchaseInvoiceInput(BaseModel):
+    """Input schema for creating a purchase invoice"""
+    contact_id: str = Field(..., description="ID du fournisseur")
+    reference: Optional[str] = Field(None, description="Référence de la facture")
+    vendor_reference: Optional[str] = Field(None, description="Référence du fournisseur")
+    date: str = Field(..., description="Date de la facture (YYYY-MM-DD)")
+    due_date: Optional[str] = Field(None, description="Date d'échéance (YYYY-MM-DD)")
+    items: List[Dict] = Field(..., description="Liste des lignes de facture [{'description': str, 'quantity': float, 'unit_price': float, 'ledger_account_id': str, 'tax_rate_id': str}]")
+    notes: Optional[str] = Field(None, description="Notes sur la facture")
+    currency_id: Optional[str] = Field("GBP", description="ID de la devise")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class CreatePurchaseInvoiceTool(SageBaseTool):
+    name: str = "create_purchase_invoice"
+    description: str = "Crée une nouvelle facture fournisseur pour compléter le cycle Purchase-to-Pay"
+    args_schema: Type[BaseModel] = CreatePurchaseInvoiceInput
+
+    def _run(self, contact_id: str, date: str, items: List[Dict],
+             reference: Optional[str] = None, vendor_reference: Optional[str] = None,
+             due_date: Optional[str] = None, notes: Optional[str] = None,
+             currency_id: Optional[str] = "GBP", business_id: Optional[str] = None) -> str:
+        try:
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            # Validation des données d'entrée
+            if not items or len(items) == 0:
+                return "❌ Erreur: Au moins une ligne de facture est requise."
+            
+            # Validation des lignes de facture
+            for i, item in enumerate(items):
+                if not item.get('description'):
+                    return f"❌ Erreur ligne {i+1}: Description requise."
+                if not item.get('unit_price') and not item.get('net_amount'):
+                    return f"❌ Erreur ligne {i+1}: Prix unitaire ou montant net requis."
+                if not item.get('ledger_account_id'):
+                    return f"❌ Erreur ligne {i+1}: Compte comptable requis."
+            
+            # Préparer les données de la facture
+            invoice_data = {
+                'contact_id': contact_id,
+                'reference': reference or f'PINV-{int(time.time())}',
+                'vendor_reference': vendor_reference,
+                'date': date,
+                'due_date': due_date or date,
+                'currency_id': currency_id,
+                'notes': notes,
+                'items': items
+            }
+            
+            result = sage_api.create_purchase_invoice(credentials, invoice_data, business_id)
+            
+            if 'error' in result or 'errors' in result:
+                error_msg = result.get('error', result.get('errors', 'Erreur inconnue'))
+                return f"❌ Erreur lors de la création: {error_msg}"
+            
+            # Extraction des informations de la facture créée
+            invoice = result
+            if 'purchase_invoice' in result:
+                invoice = result['purchase_invoice']
+            
+            invoice_ref = invoice.get('reference', invoice.get('displayed_as', 'N/A'))
+            invoice_id = invoice.get('id', 'N/A')
+            total_amount = invoice.get('total_amount', 'N/A')
+            
+            # Résumé des lignes créées
+            lines_summary = []
+            if 'invoice_lines' in invoice:
+                for line in invoice.get('invoice_lines', []):
+                    desc = line.get('description', '')[:30]
+                    amount = line.get('net_amount', line.get('total_amount', 'N/A'))
+                    lines_summary.append(f"  - {desc}... : {amount}€")
+            
+            lines_text = "\n".join(lines_summary) if lines_summary else f"  - {len(items)} ligne(s) créée(s)"
+            
+            return f"""✅ Facture fournisseur créée avec succès!
+
+📋 DÉTAILS:
+ID: {invoice_id}
+Référence: {invoice_ref}
+Fournisseur: {contact_id}
+Total: {total_amount}€
+
+📝 LIGNES:
+{lines_text}
+
+🎯 Le cycle Purchase-to-Pay est maintenant complet avec cette nouvelle capacité de création!"""
+            
+        except Exception as e:
+            return f"❌ Erreur lors de la création de la facture fournisseur: {str(e)}"
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -1234,6 +1327,7 @@ try:
         GetJournalEntriesTool(),
         GetLedgerAccountsTool(),
         GetBankReconciliationTool(),
+        CreatePurchaseInvoiceTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),
