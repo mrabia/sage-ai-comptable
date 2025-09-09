@@ -382,6 +382,139 @@ class GetTaxReturnsTool(SageBaseTool):
         except Exception as e:
             return f"❌ Erreur lors de la récupération des déclarations fiscales: {str(e)}"
 
+class GetAgingAnalysisInput(BaseModel):
+    """Input schema for aging analysis"""
+    analysis_type: Optional[str] = Field("receivables", description="Type of aging analysis: receivables or payables")
+    limit: Optional[int] = Field(50, description="Number of items to analyze")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class GetAgingAnalysisTool(SageBaseTool):
+    name: str = "get_aging_analysis"
+    description: str = "Analyse l'âge des créances/dettes pour la gestion de trésorerie experte"
+    args_schema: Type[BaseModel] = GetAgingAnalysisInput
+
+    def _run(self, analysis_type: Optional[str] = "receivables", limit: Optional[int] = 50,
+             business_id: Optional[str] = None) -> str:
+        try:
+            # Utiliser les credentials automatiquement
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            if analysis_type == "receivables":
+                # Analyze customer receivables aging
+                invoices_result = sage_api.get_invoices(credentials, business_id, limit, 0, None)
+                payments_result = sage_api.get_contact_payments(credentials, business_id, limit, 0)
+                
+                aging_data = self._analyze_receivables_aging(invoices_result, payments_result)
+                return f"✅ Analyse des créances clients:\n{aging_data}"
+                
+            elif analysis_type == "payables":
+                # Analyze supplier payables aging  
+                purchase_result = sage_api.get_purchase_invoices(credentials, business_id, limit, 0)
+                payments_result = sage_api.get_contact_payments(credentials, business_id, limit, 0)
+                
+                aging_data = self._analyze_payables_aging(purchase_result, payments_result)
+                return f"✅ Analyse des dettes fournisseurs:\n{aging_data}"
+            else:
+                return "❌ Type d'analyse invalide. Utilisez 'receivables' ou 'payables'."
+            
+        except Exception as e:
+            return f"❌ Erreur lors de l'analyse aging: {str(e)}"
+    
+    def _analyze_receivables_aging(self, invoices_result: dict, payments_result: dict) -> str:
+        """Analyze receivables aging from invoices and payments data"""
+        invoices = invoices_result.get('$items', [])
+        payments = payments_result.get('$items', [])
+        
+        if not invoices:
+            return "Aucune facture trouvée pour l'analyse."
+        
+        # Group by aging periods: 0-30, 31-60, 61-90, 90+ days
+        from datetime import datetime, timedelta
+        today = datetime.now()
+        aging_buckets = {"0-30": 0, "31-60": 0, "61-90": 0, "90+": 0}
+        total_outstanding = 0
+        
+        for invoice in invoices[:20]:  # Limit for performance
+            status = invoice.get('status', {}).get('displayed_as', '')
+            if 'paid' not in status.lower():  # Only unpaid invoices
+                due_date_str = invoice.get('due_date')
+                total_amount = float(invoice.get('total_amount', 0))
+                
+                if due_date_str:
+                    try:
+                        due_date = datetime.strptime(due_date_str[:10], '%Y-%m-%d')
+                        days_overdue = (today - due_date).days
+                        
+                        if days_overdue <= 30:
+                            aging_buckets["0-30"] += total_amount
+                        elif days_overdue <= 60:
+                            aging_buckets["31-60"] += total_amount
+                        elif days_overdue <= 90:
+                            aging_buckets["61-90"] += total_amount
+                        else:
+                            aging_buckets["90+"] += total_amount
+                        
+                        total_outstanding += total_amount
+                    except:
+                        aging_buckets["0-30"] += total_amount  # Default bucket
+                        total_outstanding += total_amount
+        
+        result = f"Total créances impayées: {total_outstanding:.2f}€\n"
+        result += f"• 0-30 jours: {aging_buckets['0-30']:.2f}€\n"
+        result += f"• 31-60 jours: {aging_buckets['31-60']:.2f}€\n"
+        result += f"• 61-90 jours: {aging_buckets['61-90']:.2f}€\n"
+        result += f"• 90+ jours: {aging_buckets['90+']:.2f}€ (CRITIQUE)"
+        
+        return result
+    
+    def _analyze_payables_aging(self, purchase_result: dict, payments_result: dict) -> str:
+        """Analyze payables aging from purchase invoices and payments data"""
+        invoices = purchase_result.get('$items', [])
+        
+        if not invoices:
+            return "Aucune facture fournisseur trouvée pour l'analyse."
+        
+        # Similar analysis for payables
+        from datetime import datetime
+        today = datetime.now()
+        aging_buckets = {"0-30": 0, "31-60": 0, "61-90": 0, "90+": 0}
+        total_outstanding = 0
+        
+        for invoice in invoices[:20]:  # Limit for performance
+            status = invoice.get('status', {}).get('displayed_as', '')
+            if 'paid' not in status.lower():
+                due_date_str = invoice.get('due_date')
+                total_amount = float(invoice.get('total_amount', 0))
+                
+                if due_date_str:
+                    try:
+                        due_date = datetime.strptime(due_date_str[:10], '%Y-%m-%d')
+                        days_overdue = (today - due_date).days
+                        
+                        if days_overdue <= 30:
+                            aging_buckets["0-30"] += total_amount
+                        elif days_overdue <= 60:
+                            aging_buckets["31-60"] += total_amount
+                        elif days_overdue <= 90:
+                            aging_buckets["61-90"] += total_amount
+                        else:
+                            aging_buckets["90+"] += total_amount
+                        
+                        total_outstanding += total_amount
+                    except:
+                        aging_buckets["0-30"] += total_amount
+                        total_outstanding += total_amount
+        
+        result = f"Total dettes impayées: {total_outstanding:.2f}€\n"
+        result += f"• 0-30 jours: {aging_buckets['0-30']:.2f}€\n"
+        result += f"• 31-60 jours: {aging_buckets['31-60']:.2f}€\n"
+        result += f"• 61-90 jours: {aging_buckets['61-90']:.2f}€\n"
+        result += f"• 90+ jours: {aging_buckets['90+']:.2f}€ (URGENT)"
+        
+        return result
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -734,6 +867,7 @@ try:
         GetPurchaseInvoicesTool(),
         GetPaymentsTool(),
         GetTaxReturnsTool(),
+        GetAgingAnalysisTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),
