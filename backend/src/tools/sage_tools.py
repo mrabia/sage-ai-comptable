@@ -233,6 +233,57 @@ class GetInvoicesTool(SageBaseTool):
         except Exception as e:
             return f"Erreur lors de la récupération des factures: {str(e)}"
 
+class GetPurchaseInvoicesInput(BaseModel):
+    """Input schema for getting purchase invoices"""
+    limit: Optional[int] = Field(20, description="Number of purchase invoices to retrieve")
+    contact_id: Optional[str] = Field(None, description="Filter by supplier contact ID")
+    status_id: Optional[str] = Field(None, description="Filter by invoice status ID")
+    from_date: Optional[str] = Field(None, description="Filter from date (YYYY-MM-DD)")
+    to_date: Optional[str] = Field(None, description="Filter to date (YYYY-MM-DD)")
+    search: Optional[str] = Field(None, description="Search by invoice reference or contact name")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class GetPurchaseInvoicesTool(SageBaseTool):
+    name: str = "get_purchase_invoices"
+    description: str = "Récupère la liste des factures fournisseurs depuis Sage Business Cloud Accounting"
+    args_schema: Type[BaseModel] = GetPurchaseInvoicesInput
+
+    def _run(self, limit: Optional[int] = 20, contact_id: Optional[str] = None,
+             status_id: Optional[str] = None, from_date: Optional[str] = None,
+             to_date: Optional[str] = None, search: Optional[str] = None,
+             business_id: Optional[str] = None) -> str:
+        try:
+            # Utiliser les credentials automatiquement
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            result = sage_api.get_purchase_invoices(
+                credentials, business_id, limit, 0, contact_id, 
+                status_id, from_date, to_date, search
+            )
+            
+            invoices = result.get('$items', [])
+            if not invoices:
+                return "ℹ️ Aucune facture fournisseur trouvée avec ces critères."
+            
+            invoice_list = []
+            for invoice in invoices:
+                # Extract key information for expert analysis
+                supplier = invoice.get('contact', {}).get('displayed_as', 'N/A')
+                ref = invoice.get('reference', invoice.get('displayed_as', 'N/A'))
+                total = invoice.get('total_amount', 'N/A')
+                status = invoice.get('status', {}).get('displayed_as', 'N/A')
+                date = invoice.get('date', 'N/A')
+                
+                invoice_info = f"- {ref} | {supplier} | {total}€ | {status} | {date}"
+                invoice_list.append(invoice_info)
+            
+            return f"✅ Factures fournisseurs ({len(invoices)} trouvées):\n" + "\n".join(invoice_list)
+            
+        except Exception as e:
+            return f"❌ Erreur lors de la récupération des factures fournisseurs: {str(e)}"
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -582,6 +633,7 @@ try:
         GetSuppliersTool(),
         CreateInvoiceTool(),
         GetInvoicesTool(),
+        GetPurchaseInvoicesTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),

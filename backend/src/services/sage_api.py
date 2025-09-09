@@ -228,6 +228,43 @@ class SageAPIService:
         """Récupère une facture spécifique"""
         return self._make_request('GET', f'sales_invoices/{invoice_id}', credentials, business_id)
     
+    # ===== GESTION DES FACTURES FOURNISSEURS =====
+    
+    def get_purchase_invoices(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                            limit: int = 20, offset: int = 0, contact_id: Optional[str] = None,
+                            status_id: Optional[str] = None, from_date: Optional[str] = None,
+                            to_date: Optional[str] = None, search: Optional[str] = None) -> Dict[str, Any]:
+        """Récupère la liste des factures fournisseurs selon l'API officielle Sage"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all',
+            'show_payments_allocations': True  # Include payment info for expert analysis
+        }
+        
+        # Add optional filters based on official API documentation
+        if contact_id:
+            params['contact_id'] = contact_id
+        if status_id:
+            params['status_id'] = status_id
+        if from_date:
+            params['from_date'] = from_date
+        if to_date:
+            params['to_date'] = to_date
+        if search:
+            params['search'] = search
+        
+        return self._make_request('GET', 'purchase_invoices', credentials, business_id, params=params)
+    
+    def get_purchase_invoice(self, credentials: Dict[str, Any], invoice_id: str,
+                           business_id: Optional[str] = None) -> Dict[str, Any]:
+        """Récupère une facture fournisseur spécifique"""
+        params = {
+            'attributes': 'all',
+            'show_payments_allocations': True
+        }
+        return self._make_request('GET', f'purchase_invoices/{invoice_id}', credentials, business_id, params=params)
+    
     # ===== RAPPORTS FINANCIERS =====
     
     def get_balance_sheet(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
