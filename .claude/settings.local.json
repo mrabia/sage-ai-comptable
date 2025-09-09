@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "mcp__ruv-swarm",
-      "mcp__claude-flow"
+      "mcp__claude-flow",
+      "Bash(python:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }

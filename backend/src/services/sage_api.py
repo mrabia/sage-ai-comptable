@@ -328,6 +328,58 @@ class SageAPIService:
         }
         return self._make_request('GET', f'tax_returns/{tax_return_id}', credentials, business_id, params=params)
     
+    # ===== GESTION DES AVOIRS =====
+    
+    def get_sales_credit_notes(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                              limit: int = 20, offset: int = 0, contact_id: Optional[str] = None,
+                              status_id: Optional[str] = None, from_date: Optional[str] = None,
+                              to_date: Optional[str] = None, search: Optional[str] = None) -> Dict[str, Any]:
+        """Récupère les avoirs clients selon l'API officielle Sage"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all',
+            'show_payments_allocations': True
+        }
+        
+        if contact_id:
+            params['contact_id'] = contact_id
+        if status_id:
+            params['status_id'] = status_id
+        if from_date:
+            params['from_date'] = from_date
+        if to_date:
+            params['to_date'] = to_date
+        if search:
+            params['search'] = search
+            
+        return self._make_request('GET', 'sales_credit_notes', credentials, business_id, params=params)
+    
+    def get_purchase_credit_notes(self, credentials: Dict[str, Any], business_id: Optional[str] = None,
+                                 limit: int = 20, offset: int = 0, contact_id: Optional[str] = None,
+                                 status_id: Optional[str] = None, from_date: Optional[str] = None,
+                                 to_date: Optional[str] = None, search: Optional[str] = None) -> Dict[str, Any]:
+        """Récupère les avoirs fournisseurs selon l'API officielle Sage"""
+        params = {
+            '$top': limit,
+            '$skip': offset,
+            'attributes': 'all',
+            'show_payments_allocations': True
+        }
+        
+        if contact_id:
+            params['contact_id'] = contact_id
+        if status_id:
+            params['status_id'] = status_id
+        if from_date:
+            params['from_date'] = from_date
+        if to_date:
+            params['to_date'] = to_date
+        if search:
+            params['search'] = search
+            
+        return self._make_request('GET', 'purchase_credit_notes', credentials, business_id, params=params)
+    
     # ===== RAPPORTS FINANCIERS =====
     
     def get_balance_sheet(self, credentials: Dict[str, Any], business_id: Optional[str] = None,

@@ -515,6 +515,68 @@ class GetAgingAnalysisTool(SageBaseTool):
         
         return result
 
+class GetCreditNotesInput(BaseModel):
+    """Input schema for getting credit notes"""
+    credit_note_type: Optional[str] = Field("sales", description="Type: sales or purchase")
+    limit: Optional[int] = Field(20, description="Number of credit notes to retrieve")
+    contact_id: Optional[str] = Field(None, description="Filter by contact ID")
+    status_id: Optional[str] = Field(None, description="Filter by status ID")
+    from_date: Optional[str] = Field(None, description="Filter from date (YYYY-MM-DD)")
+    to_date: Optional[str] = Field(None, description="Filter to date (YYYY-MM-DD)")
+    search: Optional[str] = Field(None, description="Search by reference or contact name")
+    business_id: Optional[str] = Field(None, description="Sage business ID")
+
+class GetCreditNotesTool(SageBaseTool):
+    name: str = "get_credit_notes"
+    description: str = "Récupère les avoirs clients/fournisseurs pour gestion experte des retours et remboursements"
+    args_schema: Type[BaseModel] = GetCreditNotesInput
+
+    def _run(self, credit_note_type: Optional[str] = "sales", limit: Optional[int] = 20,
+             contact_id: Optional[str] = None, status_id: Optional[str] = None,
+             from_date: Optional[str] = None, to_date: Optional[str] = None,
+             search: Optional[str] = None, business_id: Optional[str] = None) -> str:
+        try:
+            credentials = self.get_credentials()
+            if not credentials:
+                return "❌ Erreur: Aucune connexion Sage détectée. Veuillez vous connecter à Sage d'abord."
+            
+            if credit_note_type == "sales":
+                result = sage_api.get_sales_credit_notes(
+                    credentials, business_id, limit, 0, contact_id,
+                    status_id, from_date, to_date, search
+                )
+                type_label = "clients"
+            elif credit_note_type == "purchase":
+                result = sage_api.get_purchase_credit_notes(
+                    credentials, business_id, limit, 0, contact_id,
+                    status_id, from_date, to_date, search
+                )
+                type_label = "fournisseurs"
+            else:
+                return "❌ Type invalide. Utilisez 'sales' ou 'purchase'."
+            
+            credit_notes = result.get('$items', [])
+            if not credit_notes:
+                return f"ℹ️ Aucun avoir {type_label} trouvé avec ces critères."
+            
+            credit_note_list = []
+            for credit_note in credit_notes:
+                # Extract key information for expert credit management
+                contact = credit_note.get('contact', {}).get('displayed_as', 'N/A')
+                ref = credit_note.get('reference', credit_note.get('displayed_as', 'N/A'))
+                total = credit_note.get('total_amount', 'N/A')
+                status = credit_note.get('status', {}).get('displayed_as', 'N/A')
+                date = credit_note.get('date', 'N/A')
+                original_invoice = credit_note.get('original_invoice_reference', 'N/A')
+                
+                credit_note_info = f"- {ref} | {contact} | {total}€ | {status} | {date} | Fact.orig: {original_invoice}"
+                credit_note_list.append(credit_note_info)
+            
+            return f"✅ Avoirs {type_label} ({len(credit_notes)} trouvés):\n" + "\n".join(credit_note_list)
+            
+        except Exception as e:
+            return f"❌ Erreur lors de la récupération des avoirs: {str(e)}"
+
 class GetBalanceSheetInput(BaseModel):
     """Input schema for getting balance sheet"""
     from_date: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
@@ -868,6 +930,7 @@ try:
         GetPaymentsTool(),
         GetTaxReturnsTool(),
         GetAgingAnalysisTool(),
+        GetCreditNotesTool(),
         CreateProductTool(),
         GetProductsTool(),
         GetBankAccountsTool(),
