@@ -174,7 +174,26 @@ def chat_with_agent():
         
         # Check if the agent response contains a planned action that needs confirmation
         if agent_response.get('planned_action'):
-            return request_agent_confirmation(user_id, agent_response, conversation, user_msg)
+            # Define safe operations that don't need confirmation (read-only operations)
+            safe_operations = [
+                'analyse_document', 'analyze_document', 'file_analysis',
+                'read_invoices', 'get_invoices', 'list_invoices',
+                'read_clients', 'get_clients', 'list_clients', 'get_customers',
+                'read_products', 'get_products', 'list_products',
+                'generate_report', 'create_report', 'display_data',
+                'analyze_data', 'extract_data', 'view_data', 'show_data'
+            ]
+            
+            planned_action = agent_response.get('planned_action', {})
+            action_type = planned_action.get('type', '').lower()
+            
+            # Skip confirmation for safe read-only operations
+            if action_type in safe_operations:
+                # Log that we're bypassing confirmation for this safe operation
+                print(f"Bypassing confirmation for safe operation: {action_type}")
+                # Continue with normal response flow without confirmation
+            else:
+                return request_agent_confirmation(user_id, agent_response, conversation, user_msg)
         
         # Sauvegarder la réponse de l'agent
         agent_msg = Message(
