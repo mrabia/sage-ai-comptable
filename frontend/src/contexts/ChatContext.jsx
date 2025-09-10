@@ -41,7 +41,8 @@ export function ChatProvider({ children }) {
 
       if (response.ok) {
         const data = await response.json()
-        setConversations(data.conversations || [])
+        // Backend returns array directly, not wrapped in conversations object
+        setConversations(Array.isArray(data) ? data : [])
       }
     } catch (error) {
       console.error('Erreur lors du chargement des conversations:', error)
@@ -107,9 +108,41 @@ export function ChatProvider({ children }) {
     }
   }
 
-  const createNewConversation = () => {
-    setCurrentConversation(null)
-    setMessages([])
+  const createNewConversation = async () => {
+    try {
+      // Clear current state first for immediate UI response
+      setCurrentConversation(null)
+      setMessages([])
+      
+      // Create new conversation in database
+      const response = await fetch(`${API_BASE_URL}/conversations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          title: 'Nouvelle conversation',
+          metadata: {
+            created_by: 'user',
+            timestamp: new Date().toISOString()
+          }
+        })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setCurrentConversation(data.conversation)
+        // Reload conversations list to show the new conversation
+        await loadConversations()
+        toast.success('Nouvelle conversation créée')
+      } else {
+        toast.error('Erreur lors de la création de la conversation')
+      }
+    } catch (error) {
+      console.error('Erreur lors de la création de conversation:', error)
+      toast.error('Erreur lors de la création de la conversation')
+    }
   }
 
   const selectConversation = async (conversationId) => {
