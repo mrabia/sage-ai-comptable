@@ -198,11 +198,19 @@ def chat_with_agent():
             db.session.add(conversation)
             db.session.flush()  # Pour obtenir l'ID
         
-        # Sauvegarder le message utilisateur
+        # Préparer les métadonnées du message (incluant les fichiers attachés)
+        import json
+        message_metadata = {}
+        if attached_files:
+            message_metadata['attached_files'] = attached_files
+            print(f"💾 DEBUG: Storing attached files in message metadata: {attached_files}")
+        
+        # Sauvegarder le message utilisateur avec métadonnées
         user_msg = Message(
             conversation_id=conversation.id,
             content=user_message,
-            is_from_user=True
+            is_from_user=True,
+            message_metadata=json.dumps(message_metadata) if message_metadata else None
         )
         db.session.add(user_msg)
         
@@ -242,14 +250,37 @@ def chat_with_agent():
                 if confirmation_id:
                     return handle_agent_confirmation(user_id, confirmation_id, user_message, conversation, user_msg)
         
-        # Préparer le contexte des fichiers attachés
+        # Préparer le contexte des fichiers attachés (avec fallback sur fichiers précédents)
         file_context = ""
-        if attached_files:
-            print(f"📎 DEBUG: Processing {len(attached_files)} attached files")
-            from src.models.user import FileAttachment
-            file_context = "\n\n📎 FICHIERS ATTACHÉS:\n"
+        final_attached_files = attached_files.copy() if attached_files else []
+        
+        # Si aucun fichier attaché dans la requête actuelle, chercher dans les messages précédents
+        if not final_attached_files and conversation:
+            print("🔍 DEBUG: No new files attached, searching previous messages...")
+            recent_messages = Message.query.filter_by(
+                conversation_id=conversation.id,
+                is_from_user=True  # Seulement les messages utilisateur
+            ).order_by(Message.created_at.desc()).limit(10).all()
             
-            for file_id in attached_files:
+            import json
+            for msg in recent_messages:
+                if msg.message_metadata:
+                    try:
+                        metadata = json.loads(msg.message_metadata)
+                        prev_files = metadata.get('attached_files', [])
+                        if prev_files:
+                            final_attached_files = prev_files
+                            print(f"🔄 DEBUG: Found attached files from previous message: {prev_files}")
+                            break
+                    except json.JSONDecodeError:
+                        continue
+        
+        if final_attached_files:
+            print(f"📎 DEBUG: Processing {len(final_attached_files)} attached files (new: {len(attached_files)}, from history: {len(final_attached_files) - len(attached_files)})")
+            from src.models.user import FileAttachment
+            file_context = "\n\n📎 FICHIERS ANALYSÉS:\n"
+            
+            for file_id in final_attached_files:
                 print(f"📎 DEBUG: Processing file ID: {file_id}")
                 file_attachment = FileAttachment.query.filter_by(
                     id=file_id, 
@@ -259,17 +290,12 @@ def chat_with_agent():
                 if file_attachment:
                     print(f"✅ DEBUG: File found: {file_attachment.original_filename}")
                     metadata = file_attachment.get_analysis_metadata()
-                    file_context += f"- {file_attachment.original_filename} (ID: {file_id})\n"
-                    file_context += f"  Type: {metadata.get('type', 'Inconnu')} | "
-                    file_context += f"Taille: {file_attachment.file_size} bytes\n"
+                    file_context += f"- {file_attachment.original_filename} (✓ Analysé avec succès)\n"
                     
                     if metadata.get('potential_financial_data'):
                         file_context += f"  💰 Document financier détecté\n"
                     
                     if file_attachment.processed_content:
-                        # Ajouter un échantillon du contenu traité
-                        content_sample = file_attachment.processed_content[:200] + "..." if len(file_attachment.processed_content) > 200 else file_attachment.processed_content
-                        file_context += f"  Contenu: {content_sample}\n"
                         print(f"📄 DEBUG: File has processed content: {len(file_attachment.processed_content)} chars")
                     else:
                         print(f"⚠️ DEBUG: File has NO processed content")
@@ -277,16 +303,20 @@ def chat_with_agent():
                     # Log full metadata for debugging
                     print(f"📊 DEBUG: File metadata: {metadata}")
                     
-                    file_context += "\n"
                 else:
                     print(f"❌ DEBUG: File ID {file_id} not found for user {user_id}")
         else:
-            print("📎 DEBUG: No attached files received")
+            print("📎 DEBUG: No attached files found (current or previous messages)")
         
         # Ajouter les conseils seulement s'il y a des fichiers
         if file_context:
-            file_context += "💡 Utilisez 'analyze_file' avec l'ID du fichier pour une analyse détaillée et une corrélation avec Sage.\n"
-            file_context += "💡 Utilisez 'compare_files' pour comparer plusieurs fichiers.\n\n"
+            # Ajouter les IDs des fichiers pour que l'agent puisse les utiliser
+            file_ids_str = ", ".join(map(str, final_attached_files))
+            file_context += f"\n💡 INSTRUCTIONS POUR L'AGENT:\n"
+            file_context += f"• Fichiers disponibles (IDs): {file_ids_str}\n"
+            file_context += f"• Utilisez tva_collectee_officielle avec le document_id approprié pour calculer la TVA\n"
+            file_context += f"• Utilisez excel_data_explorer pour analyser la structure des données\n"
+            file_context += f"• Utilisez document_analysis pour analyser le contenu général\n\n"
         
         # Récupérer l'historique de conversation pour le contexte
         conversation_context = []
