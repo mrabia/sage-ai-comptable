@@ -64,9 +64,12 @@ def create_conversation():
 @conversations_bp.route('/conversations/<int:conversation_id>', methods=['GET'])
 @jwt_required()
 def get_conversation(conversation_id):
-    """Récupérer une conversation spécifique"""
+    """Récupérer une conversation spécifique avec ses messages"""
     try:
         user_id = get_jwt_identity()
+        
+        # Import Message here to avoid circular imports
+        from src.models.user import Message
         
         conversation = Conversation.query.filter_by(
             id=conversation_id,
@@ -77,7 +80,24 @@ def get_conversation(conversation_id):
         if not conversation:
             return jsonify({'error': 'Conversation non trouvée'}), 404
         
-        return jsonify(conversation.to_dict()), 200
+        # Get messages ordered by creation time
+        messages = Message.query.filter_by(
+            conversation_id=conversation_id
+        ).order_by(Message.created_at.asc()).all()
+        
+        # Build response with messages
+        conversation_dict = {
+            'id': conversation.id,
+            'user_id': conversation.user_id,
+            'title': conversation.title,
+            'messages': [msg.to_dict() for msg in messages],
+            'metadata': conversation.get_metadata(),
+            'created_at': conversation.created_at.isoformat(),
+            'updated_at': conversation.updated_at.isoformat(),
+            'is_active': conversation.is_active
+        }
+        
+        return jsonify(conversation_dict), 200
         
     except Exception as e:
         return jsonify({'error': f'Erreur lors de la récupération de la conversation: {str(e)}'}), 500

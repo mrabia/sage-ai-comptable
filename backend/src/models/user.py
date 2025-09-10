@@ -99,11 +99,16 @@ class Conversation(db.Model):
         return json.loads(self.conversation_metadata)
 
     def to_dict(self):
+        # Get actual Message objects instead of JSON messages field
+        messages = []
+        if hasattr(self, 'message_objects'):
+            messages = [msg.to_dict() for msg in self.message_objects]
+        
         return {
             'id': self.id,
             'user_id': self.user_id,
             'title': self.title,
-            'messages': self.get_messages(),
+            'messages': messages,
             'metadata': self.get_metadata(),
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
