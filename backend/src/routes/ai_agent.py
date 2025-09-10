@@ -177,11 +177,14 @@ def chat_with_agent():
             # Define safe operations that don't need confirmation (read-only operations)
             safe_operations = [
                 'analyse_document', 'analyze_document', 'file_analysis',
-                'read_invoices', 'get_invoices', 'list_invoices',
+                'read_invoices', 'get_invoices', 'list_invoices', 'check_invoices', 'typecheck_invoices',
                 'read_clients', 'get_clients', 'list_clients', 'get_customers',
                 'read_products', 'get_products', 'list_products',
                 'generate_report', 'create_report', 'display_data',
-                'analyze_data', 'extract_data', 'view_data', 'show_data'
+                'analyze_data', 'extract_data', 'view_data', 'show_data',
+                'verification', 'verifier', 'check', 'validate', 'validation',
+                'consultation', 'consulter', 'review', 'audit', 'inspect',
+                'summary', 'resume', 'rapport', 'report_generation'
             ]
             
             planned_action = agent_response.get('planned_action', {})
