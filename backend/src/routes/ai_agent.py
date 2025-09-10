@@ -3,11 +3,88 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from src.models.user import User, Conversation, Message, AuditLog, db
 from src.agents.sage_agent import SageAgentManager
 from datetime import datetime
+import os
 
 ai_agent_bp = Blueprint('ai_agent', __name__)
 
 # Initialiser le gestionnaire d'agent
 agent_manager = SageAgentManager()
+
+def should_skip_confirmation_intelligent(user_message, planned_action, agent_response):
+    """
+    Use LLM to intelligently determine if an operation needs confirmation.
+    Returns True if the operation is safe (read-only) and doesn't need confirmation.
+    """
+    try:
+        # Get OpenAI API key
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            # Fallback to conservative approach if no LLM available
+            return False
+        
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import HumanMessage, SystemMessage
+        
+        # Initialize LLM with a fast model for classification
+        llm = ChatOpenAI(
+            model="gpt-3.5-turbo",
+            api_key=api_key,
+            temperature=0,  # Deterministic for classification
+            max_tokens=50   # Short response for classification
+        )
+        
+        # Extract relevant information
+        action_type = planned_action.get('type', '')
+        action_description = planned_action.get('description', '')
+        user_intent = user_message
+        
+        # Create intelligent prompt for classification
+        system_prompt = """You are a security classifier for accounting software operations.
+
+Your task: Determine if an operation requires user confirmation before execution.
+
+REQUIRES CONFIRMATION (return 'CONFIRM'):
+- Creating, modifying, or deleting data in Sage accounting system
+- Adding clients, invoices, products, or financial records
+- Importing data that will be saved to the system
+- Any operation that changes the accounting database
+- Operations that could affect business data integrity
+
+DOES NOT REQUIRE CONFIRMATION (return 'SAFE'):
+- Reading, viewing, or listing existing data
+- Analyzing uploaded files without saving to Sage
+- Generating reports from existing data
+- Validating or checking data without modifications
+- Pure analysis or consultation operations
+- Displaying information or creating summaries
+
+Respond with only: 'SAFE' or 'CONFIRM'"""
+        
+        user_prompt = f"""User Request: "{user_intent}"
+Operation Type: "{action_type}"
+Operation Description: "{action_description}"
+
+Does this operation require confirmation?"""
+        
+        # Get LLM classification
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt)
+        ]
+        
+        response = llm.invoke(messages)
+        classification = response.content.strip().upper()
+        
+        # Log the intelligent decision
+        print(f"LLM Classification: {classification} for operation '{action_type}'")
+        
+        # Return True if operation is SAFE (should skip confirmation)
+        return classification == 'SAFE'
+        
+    except Exception as e:
+        print(f"Error in intelligent confirmation analysis: {e}")
+        # Fallback to conservative approach - require confirmation
+        return False
 
 @ai_agent_bp.route('/agent/chat', methods=['POST'])
 @jwt_required()
@@ -174,26 +251,12 @@ def chat_with_agent():
         
         # Check if the agent response contains a planned action that needs confirmation
         if agent_response.get('planned_action'):
-            # Define safe operations that don't need confirmation (read-only operations)
-            safe_operations = [
-                'analyse_document', 'analyze_document', 'file_analysis',
-                'read_invoices', 'get_invoices', 'list_invoices', 'check_invoices', 'typecheck_invoices',
-                'read_clients', 'get_clients', 'list_clients', 'get_customers',
-                'read_products', 'get_products', 'list_products',
-                'generate_report', 'create_report', 'display_data',
-                'analyze_data', 'extract_data', 'view_data', 'show_data',
-                'verification', 'verifier', 'check', 'validate', 'validation',
-                'consultation', 'consulter', 'review', 'audit', 'inspect',
-                'summary', 'resume', 'rapport', 'report_generation'
-            ]
-            
             planned_action = agent_response.get('planned_action', {})
-            action_type = planned_action.get('type', '').lower()
             
-            # Skip confirmation for safe read-only operations
-            if action_type in safe_operations:
-                # Log that we're bypassing confirmation for this safe operation
-                print(f"Bypassing confirmation for safe operation: {action_type}")
+            # Use intelligent LLM-based analysis to determine if confirmation is needed
+            if should_skip_confirmation_intelligent(user_message, planned_action, agent_response):
+                # Log that we're bypassing confirmation based on intelligent analysis
+                print(f"Intelligent bypass: Operation '{planned_action.get('type')}' identified as safe read-only operation")
                 # Continue with normal response flow without confirmation
             else:
                 return request_agent_confirmation(user_id, agent_response, conversation, user_msg)
