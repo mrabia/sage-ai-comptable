@@ -15,76 +15,137 @@ def should_skip_confirmation_intelligent(user_message, planned_action, agent_res
     Use LLM to intelligently determine if an operation needs confirmation.
     Returns True if the operation is safe (read-only) and doesn't need confirmation.
     """
+    print("=== INTELLIGENT CONFIRMATION ANALYSIS STARTED ===")
+    
     try:
-        # Get OpenAI API key
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            # Fallback to conservative approach if no LLM available
-            return False
-        
-        from langchain_openai import ChatOpenAI
-        from langchain_core.messages import HumanMessage, SystemMessage
-        
-        # Initialize LLM with a fast model for classification
-        llm = ChatOpenAI(
-            model="gpt-3.5-turbo",
-            api_key=api_key,
-            temperature=0,  # Deterministic for classification
-            max_tokens=50   # Short response for classification
-        )
-        
         # Extract relevant information
         action_type = planned_action.get('type', '')
         action_description = planned_action.get('description', '')
         user_intent = user_message
         
-        # Create intelligent prompt for classification
-        system_prompt = """You are a security classifier for accounting software operations.
-
-Your task: Determine if an operation requires user confirmation before execution.
-
-REQUIRES CONFIRMATION (return 'CONFIRM'):
-- Creating, modifying, or deleting data in Sage accounting system
-- Adding clients, invoices, products, or financial records
-- Importing data that will be saved to the system
-- Any operation that changes the accounting database
-- Operations that could affect business data integrity
-
-DOES NOT REQUIRE CONFIRMATION (return 'SAFE'):
-- Reading, viewing, or listing existing data
-- Analyzing uploaded files without saving to Sage
-- Generating reports from existing data
-- Validating or checking data without modifications
-- Pure analysis or consultation operations
-- Displaying information or creating summaries
-
-Respond with only: 'SAFE' or 'CONFIRM'"""
+        print(f"User Intent: {user_intent}")
+        print(f"Action Type: {action_type}")
+        print(f"Action Description: {action_description}")
         
-        user_prompt = f"""User Request: "{user_intent}"
-Operation Type: "{action_type}"
-Operation Description: "{action_description}"
-
-Does this operation require confirmation?"""
+        # Get OpenAI API key
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            print("❌ No OpenAI API key found - using fallback")
+            return False
         
-        # Get LLM classification
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt)
+        print("✅ OpenAI API key found - proceeding with LLM analysis")
+        
+        # Simple heuristic analysis first (as backup to LLM)
+        user_lower = user_intent.lower()
+        action_lower = action_type.lower()
+        desc_lower = action_description.lower()
+        
+        # Strong indicators this is a SAFE operation
+        safe_indicators = [
+            'analyse' in user_lower, 'analysis' in user_lower,
+            'declaration' in user_lower, 'déclaration' in user_lower,
+            'exporter' in user_lower, 'export' in user_lower,
+            'tableau' in user_lower, 'rapport' in user_lower,
+            'check' in action_lower, 'verify' in action_lower,
+            'typecheck' in action_lower, 'validation' in action_lower,
+            'ne veux pas que tu interagisse' in user_lower,
+            'juste reponds moi dans le chat' in user_lower
         ]
         
-        response = llm.invoke(messages)
-        classification = response.content.strip().upper()
+        # Strong indicators this requires CONFIRMATION
+        dangerous_indicators = [
+            'créer' in user_lower, 'create' in user_lower,
+            'ajouter' in user_lower, 'add' in user_lower,
+            'modifier' in user_lower, 'modify' in user_lower,
+            'supprimer' in user_lower, 'delete' in user_lower,
+            'importer dans sage' in user_lower, 'save to sage' in user_lower
+        ]
         
-        # Log the intelligent decision
-        print(f"LLM Classification: {classification} for operation '{action_type}'")
+        safe_score = sum(1 for indicator in safe_indicators if indicator)
+        danger_score = sum(1 for indicator in dangerous_indicators if indicator)
         
-        # Return True if operation is SAFE (should skip confirmation)
-        return classification == 'SAFE'
+        print(f"Safe indicators found: {safe_score}")
+        print(f"Danger indicators found: {danger_score}")
+        
+        # If clearly safe based on heuristics, skip confirmation
+        if safe_score >= 2 and danger_score == 0:
+            print("🟢 HEURISTIC DECISION: SAFE - Skipping confirmation")
+            return True
+            
+        # If clearly dangerous, require confirmation  
+        if danger_score >= 1:
+            print("🔴 HEURISTIC DECISION: DANGEROUS - Requiring confirmation")
+            return False
+        
+        # For ambiguous cases, try LLM analysis
+        try:
+            from langchain_openai import ChatOpenAI
+            from langchain_core.messages import HumanMessage, SystemMessage
+            
+            # Initialize LLM with a fast model for classification
+            llm = ChatOpenAI(
+                model="gpt-3.5-turbo",
+                api_key=api_key,
+                temperature=0,  # Deterministic for classification
+                max_tokens=10   # Very short response for classification
+            )
+            
+            # Simplified prompt for better reliability
+            system_prompt = """Classify accounting operation safety. 
+            
+            SAFE operations (respond 'SAFE'):
+            - Analysis, reading, viewing, reports
+            - File analysis without saving to database
+            - Checking/validating existing data
+            
+            DANGEROUS operations (respond 'DANGER'):  
+            - Creating, modifying, deleting records
+            - Saving/importing data to system
+            
+            Respond only: 'SAFE' or 'DANGER'"""
+            
+            user_prompt = f"""User: "{user_intent}"
+            Action: "{action_type}" - "{action_description}"
+            
+            Classification:"""
+            
+            # Get LLM classification
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = llm.invoke(messages)
+            classification = response.content.strip().upper()
+            
+            print(f"🤖 LLM Classification: {classification}")
+            
+            # Return True if operation is SAFE (should skip confirmation)
+            if 'SAFE' in classification:
+                print("🟢 LLM DECISION: SAFE - Skipping confirmation")
+                return True
+            else:
+                print("🔴 LLM DECISION: DANGEROUS - Requiring confirmation")
+                return False
+                
+        except Exception as llm_error:
+            print(f"❌ LLM analysis failed: {llm_error}")
+            
+            # Fallback: if heuristics suggest safe, go with it
+            if safe_score > danger_score:
+                print("🟡 FALLBACK DECISION: SAFE based on heuristics")
+                return True
+            else:
+                print("🟡 FALLBACK DECISION: CONSERVATIVE - Requiring confirmation")
+                return False
         
     except Exception as e:
-        print(f"Error in intelligent confirmation analysis: {e}")
-        # Fallback to conservative approach - require confirmation
+        print(f"❌ Error in intelligent confirmation analysis: {e}")
+        # Ultimate fallback to conservative approach
+        print("🔴 ULTIMATE FALLBACK: Requiring confirmation")
         return False
+    finally:
+        print("=== INTELLIGENT CONFIRMATION ANALYSIS COMPLETED ===")  
 
 @ai_agent_bp.route('/agent/chat', methods=['POST'])
 @jwt_required()
