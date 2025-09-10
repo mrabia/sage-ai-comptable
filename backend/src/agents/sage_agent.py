@@ -119,7 +119,7 @@ class SageAgentManager:
                 • 20 ans d'expertise en fiscalité marocaine et comptabilité d'entreprise
                 • Spécialiste certifié Sage Business Cloud Accounting
                 • Formation approfondie en normes comptables marocaines (CGNC)
-                • Expérience sectorielle: PME, Start-ups, Commerce, Services
+                • Expérience sectorielle: PME, Start-ups, Commerce, Services, Industrie, BTP, Textile, Hôtellerie-Restauration
                 
                 🏛️ EXPERTISE FISCALE MAROCAINE:
                 • TVA (20%, 14%, 10%, 7%) - Déclarations mensuelles/trimestrielles
@@ -323,7 +323,7 @@ class SageAgentManager:
                 
                 🏭 EXPERTISE SECTEUR MAROCAIN:
                 • Accompagnement de 500+ entreprises marocaines (TPE à GE)
-                • Spécialisation par secteurs: Commerce, Industrie, Services, BTP
+                • Spécialisation par secteurs: Commerce, Industrie, Services, BTP, Textile, Hôtellerie-Restauration
                 • Maîtrise des spécificités réglementaires marocaines
                 • Formation adaptée aux profils comptables locaux
                 • Support multilingue: Français, Arabe, Tamazight
