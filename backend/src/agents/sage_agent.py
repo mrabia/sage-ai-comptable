@@ -277,39 +277,11 @@ class SageAgentManager:
             return {}
         
         try:
-            # Prompt pour l'Assistant Comptable Expert
-            comptable_prompt = """Vous êtes un assistant comptable expert avec une connaissance approfondie de Sage Business Cloud Accounting. 
-            Vous excellez dans la gestion des clients, fournisseurs, factures, et produits. Vous savez également analyser des documents 
-            (factures PDF, images, fichiers CSV/Excel) pour extraire automatiquement les données comptables et les intégrer dans Sage.
+            # Les prompts Moroccan sont déjà définis dans _create_agents_langchain()
+            # Cette méthode est obsolète et ne doit plus être utilisée
+            comptable_prompt = "DEPRECATED - Use _create_agents_langchain() for Moroccan personas"
             
-            Vos spécialités incluent:
-            - Création et gestion des fiches clients et fournisseurs
-            - Saisie et traitement des factures
-            - Gestion du catalogue produits
-            - Analyse automatique de documents comptables
-            - Import en masse de données depuis des fichiers
-                - Validation et contrôle de cohérence des données
-                
-                Vous communiquez de manière claire et professionnelle, en expliquant chaque étape de vos actions.
-                
-                IMPORTANT: Utilisez les outils Sage disponibles pour effectuer des actions réelles dans le système."""
-            
-            # Prompt pour l'Analyste Financier Senior
-            analyste_prompt = """Vous êtes un analyste financier senior spécialisé dans l'interprétation des données comptables de Sage Business Cloud Accounting.
-                Vous excellez dans la production de rapports financiers, l'analyse de performance et la validation de données.
-                
-                Vos compétences incluent:
-                - Génération et analyse des bilans comptables
-                - Création de comptes de résultat détaillés
-                - Calcul et interprétation des KPIs financiers
-                - Recherche et analyse de transactions
-                - Validation de la qualité des données extraites de documents
-                - Détection d'incohérences et recommandations d'amélioration
-                - Conseil en optimisation fiscale et gestion de la TVA
-                
-                Vous présentez vos analyses de manière structurée avec des recommandations concrètes.
-                
-                IMPORTANT: Utilisez les outils Sage disponibles pour accéder aux données réelles."""
+            analyste_prompt = "DEPRECATED - Use _create_agents_langchain() for Moroccan personas"
             
             # Prompt pour l'Expert Support Sage
             support_prompt = """Vous êtes Youssef Tazi, Expert Support et Formation Sage avec 20 ans d'expérience en accompagnement d'entreprises marocaines.
@@ -427,13 +399,29 @@ class SageAgentManager:
             6. Fournissez une réponse complète et professionnelle
             7. Si vous analysez des documents, fournissez un résumé des données extraites et leur qualité
             
+            
+            IMPORTANT: Répondez en tant qu'expert-comptable marocain selon votre persona:
+            - Ahmed Benali (comptable) : Expert-Comptable avec 20 ans d'expérience au Maroc
+            - Fatima El Fassi (analyste) : Analyste Financière Senior spécialisée Maroc  
+            - Youssef Tazi (support) : Expert Support Sage contextualisé PME marocaines
+            Montrez votre expertise locale (TVA, CGNC, CNSS, etc.) dans vos réponses.
+            
             Répondez de manière claire et structurée en français.
             """
             
-            # Exécuter l'agent LangChain avec les outils
+            # Construire l'historique de conversation pour LangChain
+            chat_history = []
+            if conversation_context:
+                for msg in conversation_context:
+                    if msg['role'] == 'user':
+                        chat_history.append(HumanMessage(content=msg['content']))
+                    else:
+                        chat_history.append(SystemMessage(content=msg['content']))
+            
+            # Exécuter l'agent LangChain avec les outils et l'historique
             result = selected_agent.invoke({
                 "input": agent_input,
-                "chat_history": []  # Peut être étendu pour inclure l'historique
+                "chat_history": chat_history
             })
             
             result_str = result.get('output', str(result))

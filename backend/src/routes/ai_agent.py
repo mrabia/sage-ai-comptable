@@ -130,13 +130,30 @@ def chat_with_agent():
             file_context += "💡 Utilisez 'analyze_file' avec l'ID du fichier pour une analyse détaillée et une corrélation avec Sage.\n"
             file_context += "💡 Utilisez 'compare_files' pour comparer plusieurs fichiers.\n\n"
         
+        # Récupérer l'historique de conversation pour le contexte
+        conversation_context = []
+        if conversation:
+            # Récupérer les derniers messages de la conversation pour le contexte
+            recent_messages = Message.query.filter_by(
+                conversation_id=conversation.id
+            ).order_by(Message.created_at.desc()).limit(10).all()
+            
+            # Construire le contexte de conversation (ordre chronologique)
+            for msg in reversed(recent_messages[1:]):  # Exclure le message actuel
+                role = "user" if msg.is_from_user else "assistant"
+                conversation_context.append({
+                    "role": role,
+                    "content": msg.content,
+                    "timestamp": msg.created_at.isoformat()
+                })
+        
         # Traiter le message avec l'agent AI (inclure le contexte des fichiers)
         enhanced_message = user_message
         if file_context:
             enhanced_message = user_message + file_context
         
         agent_response = agent_manager.process_user_request(
-            enhanced_message, user_id
+            enhanced_message, user_id, conversation_context
         )
         
         # Normaliser la réponse de l'agent (peut être string ou dict)
