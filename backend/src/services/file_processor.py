@@ -107,11 +107,22 @@ class FileProcessorService:
                                 'invoice', 'payment', 'balance', 'tax', 'vat', 'tva']
             
             for sheet_name, df in excel_data.items():
+                # Convert sample data to ensure JSON serializable format
+                sample_data = {}
+                if not df.empty:
+                    sample_df = df.head(3)
+                    for column in sample_df.columns:
+                        # Convert pandas Timestamp objects to strings
+                        if sample_df[column].dtype == 'datetime64[ns]':
+                            sample_data[column] = sample_df[column].dt.strftime('%Y-%m-%d %H:%M:%S').tolist()
+                        else:
+                            sample_data[column] = sample_df[column].astype(str).tolist()
+                
                 sheet_info = {
                     'rows': len(df),
                     'columns': len(df.columns),
                     'column_names': df.columns.tolist(),
-                    'sample_data': df.head(3).to_dict() if not df.empty else {},
+                    'sample_data': sample_data,
                     'has_financial_indicators': False
                 }
                 
@@ -125,7 +136,13 @@ class FileProcessorService:
                 numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
                 if numeric_columns:
                     sheet_info['numeric_columns'] = numeric_columns
-                    sheet_info['numeric_summary'] = df[numeric_columns].describe().to_dict()
+                    # Convert numeric summary to ensure JSON serializable format
+                    numeric_summary = df[numeric_columns].describe().to_dict()
+                    # Convert any potential Timestamp objects to strings
+                    for col, stats in numeric_summary.items():
+                        numeric_summary[col] = {k: str(v) if hasattr(v, 'isoformat') else v 
+                                              for k, v in stats.items()}
+                    sheet_info['numeric_summary'] = numeric_summary
                 
                 analysis['sheets'][sheet_name] = sheet_info
                 analysis['summary']['total_rows'] += len(df)
@@ -163,6 +180,17 @@ class FileProcessorService:
             if df is None:
                 return {'error': 'Impossible de lire le fichier CSV'}
             
+            # Convert sample data to ensure JSON serializable format
+            sample_data = {}
+            if not df.empty:
+                sample_df = df.head(5)
+                for column in sample_df.columns:
+                    # Convert pandas Timestamp objects to strings
+                    if sample_df[column].dtype == 'datetime64[ns]':
+                        sample_data[column] = sample_df[column].dt.strftime('%Y-%m-%d %H:%M:%S').tolist()
+                    else:
+                        sample_data[column] = sample_df[column].astype(str).tolist()
+            
             analysis = {
                 'type': 'csv',
                 'encoding': used_encoding,
@@ -170,7 +198,7 @@ class FileProcessorService:
                 'rows': len(df),
                 'columns': len(df.columns),
                 'column_names': df.columns.tolist(),
-                'sample_data': df.head(5).to_dict() if not df.empty else {},
+                'sample_data': sample_data,
                 'data_types': df.dtypes.astype(str).to_dict(),
                 'potential_financial_data': False
             }
@@ -187,7 +215,13 @@ class FileProcessorService:
             numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
             if numeric_columns:
                 analysis['numeric_columns'] = numeric_columns
-                analysis['numeric_summary'] = df[numeric_columns].describe().to_dict()
+                # Convert numeric summary to ensure JSON serializable format
+                numeric_summary = df[numeric_columns].describe().to_dict()
+                # Convert any potential Timestamp objects to strings
+                for col, stats in numeric_summary.items():
+                    numeric_summary[col] = {k: str(v) if hasattr(v, 'isoformat') else v 
+                                          for k, v in stats.items()}
+                analysis['numeric_summary'] = numeric_summary
             
             return analysis
             
