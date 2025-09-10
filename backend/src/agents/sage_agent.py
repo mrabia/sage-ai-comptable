@@ -17,8 +17,10 @@ from src.tools.document_tools import (
     ProductImportTool, DocumentValidationTool
 )
 from src.tools.excel_analysis_tools import (
-    ExcelTVACalculatorTool, ExcelDataExplorerTool
+    ExcelDataExplorerTool
+    # ExcelTVACalculatorTool SUPPRIMÉ - méthode incorrecte
 )
+from src.tools.tva_445_official import TVACollecteeOfficialTool
 
 class SageAgentManager:
     """Gestionnaire des agents IA pour Sage Business Cloud Accounting"""
@@ -85,8 +87,9 @@ class SageAgentManager:
         
         # Initialiser les outils d'analyse Excel
         self.excel_analysis_tools = [
-            ExcelTVACalculatorTool(),
-            ExcelDataExplorerTool()
+            TVACollecteeOfficialTool(),  # Outil officiel selon méthode expert
+            ExcelDataExplorerTool()      # Pour exploration générale
+            # ExcelTVACalculatorTool() SUPPRIMÉ - méthode incorrecte (reconstruction HT×taux)
         ]
         
         # Configurer les agents LangChain avec outils (Option A moderne)
@@ -125,11 +128,12 @@ class SageAgentManager:
 
                 🚨 RÈGLE PRIORITAIRE ABSOLUE:
                 QUAND L'UTILISATEUR ATTACHE UN FICHIER ET DEMANDE UNE ANALYSE:
-                1. UTILISEZ UNIQUEMENT les outils d'analyse de fichiers (document_analysis, excel_tva_calculator, excel_data_explorer)  
+                1. UTILISEZ UNIQUEMENT les outils d'analyse de fichiers (document_analysis, tva_collectee_officielle, excel_data_explorer)  
                 2. NE JAMAIS utiliser les outils Sage API (get_tax_returns, get_journal_entries, etc.) 
                 3. L'utilisateur veut que vous analysiez SES DONNÉES LOCALES, pas les données Sage distantes
                 4. Si l'utilisateur dit "utilise le fichier attaché", obéissez immédiatement sans essayer d'autres sources
-                5. Quand vous voyez "Fichiers analysés:" dans le message, utilisez excel_tva_calculator pour calculer la TVA directement
+                5. Pour calcul TVA: UTILISEZ UNIQUEMENT tva_collectee_officielle (méthode officielle Σ(Crédits 445) - Σ(Débits 445))
+                6. NE JAMAIS utiliser excel_tva_calculator (méthode incorrecte et obsolète)
                 
                 🎓 PROFIL PROFESSIONNEL:
                 • Expert-Comptable diplômé de l'ISCAE Casablanca (2004)
@@ -177,16 +181,19 @@ class SageAgentManager:
                 • Documentation complète en français et arabe si nécessaire
                 
                 💡 LOGIQUE DE SÉLECTION D'OUTILS:
-                • SI message contient "Fichiers analysés:" → Utiliser excel_tva_calculator IMMÉDIATEMENT
-                • SI demande calcul TVA + fichier Excel → Utiliser excel_tva_calculator uniquement
-                • SI "utilise le fichier attaché" → document_analysis puis excel_tva_calculator
+                • SI message contient "Fichiers analysés:" → Utiliser tva_collectee_officielle IMMÉDIATEMENT
+                • SI demande calcul TVA + fichier Excel → Utiliser tva_collectee_officielle uniquement
+                • SI "utilise le fichier attaché" → document_analysis puis tva_collectee_officielle
                 • SI demande analyse sans fichier → Utiliser outils Sage API
                 • TOUJOURS privilégier les données locales sur les données distantes
                 
                 OUTILS PRIORITAIRES POUR FICHIERS EXCEL:
-                1. excel_tva_calculator - Pour calculs TVA directs
+                1. tva_collectee_officielle - Pour calculs TVA officiels (Σ(Crédits 445) - Σ(Débits 445))
                 2. excel_data_explorer - Pour exploration détaillée
                 3. document_analysis - Pour analyse générale
+                
+                🚨 INTERDICTION ABSOLUE:
+                NE JAMAIS utiliser excel_tva_calculator - cet outil est défaillant et donne des résultats erronés!
                 
                 N'utilisez les outils Sage (get_tax_returns, get_journal_entries) QUE si aucun fichier n'est attaché.
                 • Veille permanente sur les évolutions réglementaires
@@ -213,10 +220,12 @@ class SageAgentManager:
 
                 🚨 RÈGLE PRIORITAIRE ABSOLUE:
                 QUAND L'UTILISATEUR ATTACHE UN FICHIER ET DEMANDE UNE ANALYSE:
-                1. UTILISEZ UNIQUEMENT les outils d'analyse de fichiers (document_analysis, excel_data_explorer, excel_tva_calculator)  
+                1. UTILISEZ UNIQUEMENT les outils d'analyse de fichiers (document_analysis, excel_data_explorer, tva_collectee_officielle)  
                 2. NE JAMAIS utiliser les outils Sage API quand un fichier est attaché
-                3. Si vous voyez "Fichiers analysés:" utilisez excel_data_explorer ou excel_tva_calculator selon la demande
-                4. Obéissez immédiatement aux instructions utilisateur concernant les fichiers attachés
+                3. Pour calcul TVA: UTILISEZ UNIQUEMENT tva_collectee_officielle (méthode officielle)
+                4. Si vous voyez "Fichiers analysés:" utilisez excel_data_explorer ou tva_collectee_officielle selon la demande
+                5. NE JAMAIS utiliser excel_tva_calculator (outil défaillant)
+                6. Obéissez immédiatement aux instructions utilisateur concernant les fichiers attachés
                 
                 🎓 PROFIL PROFESSIONNEL:
                 • Master en Finance d'Entreprise - Université Mohammed V Rabat (2004)
