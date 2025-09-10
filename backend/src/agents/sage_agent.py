@@ -16,6 +16,9 @@ from src.tools.document_tools import (
     DocumentAnalysisTool, InvoiceExtractionTool, ClientImportTool, 
     ProductImportTool, DocumentValidationTool
 )
+from src.tools.excel_analysis_tools import (
+    ExcelTVACalculatorTool, ExcelDataExplorerTool
+)
 
 class SageAgentManager:
     """Gestionnaire des agents IA pour Sage Business Cloud Accounting"""
@@ -80,6 +83,12 @@ class SageAgentManager:
             DocumentValidationTool()
         ]
         
+        # Initialiser les outils d'analyse Excel
+        self.excel_analysis_tools = [
+            ExcelTVACalculatorTool(),
+            ExcelDataExplorerTool()
+        ]
+        
         # Configurer les agents LangChain avec outils (Option A moderne)
         if self.agents_available:
             self.langchain_tools = self._convert_tools_to_langchain()
@@ -93,7 +102,7 @@ class SageAgentManager:
     def _convert_tools_to_langchain(self):
         """Convertit les outils CrewAI en outils LangChain compatibles"""
         try:
-            all_tools = self.sage_tools + self.document_tools
+            all_tools = self.sage_tools + self.document_tools + self.excel_analysis_tools
             langchain_tools = convert_crewai_tools_to_langchain(all_tools)
             print(f"✅ Converted {len(langchain_tools)} tools to LangChain format")
             return langchain_tools

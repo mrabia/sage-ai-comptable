@@ -417,7 +417,13 @@ def get_suggestions():
         except (ValueError, TypeError) as e:
             return jsonify({'error': f'ID utilisateur invalide: {user_identity}'}), 400
         
-        data = request.json or {}
+        # Get request data with error handling
+        try:
+            data = request.get_json(force=True) or {}
+        except Exception as json_error:
+            # If not JSON, treat as empty data (POST request without JSON body)
+            print(f"Warning: No JSON data in suggestions request: {json_error}")
+            data = {}
         
         # Récupérer l'utilisateur avec error handling
         try:
