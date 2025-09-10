@@ -195,10 +195,13 @@ class SageAgentManager:
                 🚨 INTERDICTION ABSOLUE:
                 NE JAMAIS utiliser excel_tva_calculator - cet outil est défaillant et donne des résultats erronés!
                 
-                N'utilisez les outils Sage (get_tax_returns, get_journal_entries) QUE si aucun fichier n'est attaché.
-                • Veille permanente sur les évolutions réglementaires
+                🔧 LOGIQUE DE SÉLECTION SELON CONTEXTE:
+                • SI CONNEXION SAGE ACTIVE: Utilisez outils Sage quand approprié
+                • SI MODE ANALYSE LOCAL: Concentrez-vous sur tva_collectee_officielle, excel_data_explorer, document_analysis
+                • SI PAS DE CONNEXION SAGE: N'utilisez QUE les outils locaux d'analyse
                 
-                IMPORTANT: Utilisez les outils Sage disponibles en appliquant les spécificités marocaines.
+                IMPORTANT: Vous êtes un expert-comptable marocain compétent avec ou sans Sage.
+                Votre expertise en normes CGNC, fiscalité marocaine et analyse financière est indépendante des outils.
                 
                 Pour les OPÉRATIONS (création, modification, suppression):
                 - Analysez d'abord les implications fiscales marocaines
@@ -280,7 +283,12 @@ class SageAgentManager:
                 • Les recommandations stratégiques adaptées au marché marocain
                 • La présentation claire et pédagogique pour dirigeants
                 
-                IMPORTANT: Utilisez les outils Sage en appliquant l'expertise financière marocaine."""),
+                🔧 LOGIQUE DE SÉLECTION SELON CONTEXTE:
+                • SI CONNEXION SAGE ACTIVE: Utilisez outils Sage pour données temps réel
+                • SI MODE ANALYSE LOCAL: Concentrez-vous sur excel_data_explorer, tva_collectee_officielle  
+                • SI PAS DE CONNEXION SAGE: Analysez les documents fournis avec expertise marocaine
+                
+                IMPORTANT: Votre expertise financière marocaine est indépendante des outils techniques."""),
                 MessagesPlaceholder(variable_name="chat_history", optional=True),
                 ("human", "{input}"),
                 MessagesPlaceholder(variable_name="agent_scratchpad"),
@@ -524,9 +532,75 @@ class SageAgentManager:
         else:
             return 'support'
     
+    def _detect_sage_requirement(self, user_message: str, conversation_context: list = None) -> bool:
+        """Détermine intelligemment si Sage est requis pour cette demande"""
+        message_lower = user_message.lower()
+        
+        # Indicateurs FORTS que Sage est nécessaire (opérations dans Sage)
+        sage_required_keywords = [
+            'créer dans sage', 'ajouter dans sage', 'sauvegarder dans sage',
+            'importer dans sage', 'synchroniser avec sage', 'connecter sage',
+            'get_customers', 'create_invoice', 'get_balance_sheet', 
+            'clients sage', 'factures sage', 'produits sage',
+            'données sage', 'sage business cloud', 'mes données sage',
+            'lister mes clients', 'mes factures', 'mon bilan',
+            'créer un client', 'créer une facture', 'créer un produit'
+        ]
+        
+        # Indicateurs que l'utilisateur travaille EN LOCAL (pas besoin de Sage)
+        local_work_keywords = [
+            'fichier attaché', 'document attaché', 'excel attaché',
+            'analyser ce fichier', 'calculer la tva', 'tva collectée',
+            'tableau excel', 'feuille excel', 'grand livre',
+            'analyse document', 'extraction données', 'validation fichier',
+            'période de', 'mois de', 'calcul pour', 'données du fichier',
+            'fichiers analysés', 'document analysé'
+        ]
+        
+        # Vérifier les indicateurs Sage requis
+        sage_score = sum(1 for keyword in sage_required_keywords if keyword in message_lower)
+        
+        # Vérifier les indicateurs de travail local
+        local_score = sum(1 for keyword in local_work_keywords if keyword in message_lower)
+        
+        # Examiner le contexte de conversation pour des fichiers attachés
+        has_attached_files = False
+        if conversation_context:
+            for msg in conversation_context[-3:]:  # Derniers 3 messages
+                if 'fichiers analysés' in msg.get('content', '').lower():
+                    has_attached_files = True
+                    break
+        
+        # Logique de décision
+        if local_score > 0 or has_attached_files:
+            print(f"🔍 DEBUG: Travail LOCAL détecté (score: {local_score}, fichiers: {has_attached_files})")
+            return False  # Pas besoin de Sage
+        
+        if sage_score > 0:
+            print(f"🔍 DEBUG: Sage REQUIS détecté (score: {sage_score})")
+            return True  # Sage nécessaire
+        
+        # Par défaut : questions générales ne nécessitent pas Sage
+        general_questions = [
+            'comment', 'qu\'est-ce', 'expliquer', 'aide', 'définir',
+            'différence', 'avantage', 'procédure', 'méthode'
+        ]
+        
+        general_score = sum(1 for keyword in general_questions if keyword in message_lower)
+        if general_score > 0:
+            print(f"🔍 DEBUG: Question générale détectée (score: {general_score})")
+            return False  # Pas besoin de Sage pour questions générales
+        
+        # Cas ambigus : par défaut ne pas exiger Sage
+        print("🔍 DEBUG: Cas ambigu - pas d'exigence Sage par défaut")
+        return False
+    
     def _build_task_context(self, user_message: str, conversation_context: list = None, user_id: int = None, sage_credentials: dict = None) -> str:
         """Construit le contexte pour la tâche de l'agent"""
         context_parts = []
+        
+        # Détecter si l'utilisateur a réellement besoin de Sage ou peut utiliser les outils locaux
+        needs_sage = self._detect_sage_requirement(user_message, conversation_context)
         
         # Ajouter les credentials Sage si disponibles
         if sage_credentials:
@@ -534,7 +608,14 @@ class SageAgentManager:
             context_parts.append("🔧 OUTILS DISPONIBLES - Utilisez directement les outils Sage (get_customers, create_invoice, get_balance_sheet, etc.) sans demander d'identifiants")
             context_parts.append("📋 INSTRUCTIONS - Répondez directement aux demandes en utilisant les outils Sage appropriés")
         else:
-            context_parts.append("⚠️ Aucune connexion Sage détectée - Demander à l'utilisateur de se connecter à Sage d'abord")
+            if needs_sage:
+                context_parts.append("⚠️ CONNEXION SAGE REQUISE - Cette demande nécessite une connexion à Sage Business Cloud Accounting")
+                context_parts.append("🔗 Pour vous connecter à Sage, utilisez la section 'Connexion Sage' de l'interface")
+            else:
+                context_parts.append("💡 MODE ANALYSE LOCAL - Vous pouvez analyser vos documents sans connexion Sage")
+                context_parts.append("🔧 OUTILS DISPONIBLES - Analyse de documents, calculs TVA, exploration Excel")
+                context_parts.append("📋 INSTRUCTIONS - Utilisez les outils d'analyse locale (tva_collectee_officielle, document_analysis, excel_data_explorer)")
+                context_parts.append("💬 Si vous souhaitez interagir avec Sage plus tard, connectez-vous via l'interface")
         
         if user_id:
             context_parts.append(f"Utilisateur ID: {user_id}")
