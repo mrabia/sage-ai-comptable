@@ -163,6 +163,11 @@ def chat_with_agent():
         business_id = data.get('business_id')
         attached_files = data.get('attached_files', [])  # Liste des IDs de fichiers attachés
         
+        # Debug logging pour les fichiers attachés
+        print(f"🔍 DEBUG: Request data received: {data}")
+        print(f"🔍 DEBUG: Attached files IDs: {attached_files}")
+        print(f"🔍 DEBUG: Attached files count: {len(attached_files) if attached_files else 0}")
+        
         # Récupérer l'utilisateur et ses credentials Sage
         user = User.query.get(user_id)
         if not user:
@@ -240,16 +245,19 @@ def chat_with_agent():
         # Préparer le contexte des fichiers attachés
         file_context = ""
         if attached_files:
+            print(f"📎 DEBUG: Processing {len(attached_files)} attached files")
             from src.models.user import FileAttachment
             file_context = "\n\n📎 FICHIERS ATTACHÉS:\n"
             
             for file_id in attached_files:
+                print(f"📎 DEBUG: Processing file ID: {file_id}")
                 file_attachment = FileAttachment.query.filter_by(
                     id=file_id, 
                     user_id=user_id
                 ).first()
                 
                 if file_attachment:
+                    print(f"✅ DEBUG: File found: {file_attachment.original_filename}")
                     metadata = file_attachment.get_analysis_metadata()
                     file_context += f"- {file_attachment.original_filename} (ID: {file_id})\n"
                     file_context += f"  Type: {metadata.get('type', 'Inconnu')} | "
@@ -262,9 +270,21 @@ def chat_with_agent():
                         # Ajouter un échantillon du contenu traité
                         content_sample = file_attachment.processed_content[:200] + "..." if len(file_attachment.processed_content) > 200 else file_attachment.processed_content
                         file_context += f"  Contenu: {content_sample}\n"
+                        print(f"📄 DEBUG: File has processed content: {len(file_attachment.processed_content)} chars")
+                    else:
+                        print(f"⚠️ DEBUG: File has NO processed content")
+                    
+                    # Log full metadata for debugging
+                    print(f"📊 DEBUG: File metadata: {metadata}")
                     
                     file_context += "\n"
-            
+                else:
+                    print(f"❌ DEBUG: File ID {file_id} not found for user {user_id}")
+        else:
+            print("📎 DEBUG: No attached files received")
+        
+        # Ajouter les conseils seulement s'il y a des fichiers
+        if file_context:
             file_context += "💡 Utilisez 'analyze_file' avec l'ID du fichier pour une analyse détaillée et une corrélation avec Sage.\n"
             file_context += "💡 Utilisez 'compare_files' pour comparer plusieurs fichiers.\n\n"
         
