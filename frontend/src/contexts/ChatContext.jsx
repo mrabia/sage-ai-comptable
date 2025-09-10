@@ -156,8 +156,18 @@ export function ChatProvider({ children }) {
 
       if (response.ok) {
         const data = await response.json()
-        setCurrentConversation(data.conversation)
-        setMessages(data.conversation.messages || [])
+        // Handle both direct conversation object or wrapped in conversation property
+        const conversation = data.conversation || data
+        if (conversation && conversation.id) {
+          setCurrentConversation(conversation)
+          setMessages(conversation.messages || [])
+        } else {
+          console.error('Invalid conversation data received:', data)
+          toast.error('Conversation non trouvée')
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        toast.error(errorData.error || 'Erreur lors du chargement de la conversation')
       }
     } catch (error) {
       console.error('Erreur lors du chargement de la conversation:', error)
