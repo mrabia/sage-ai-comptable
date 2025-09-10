@@ -241,17 +241,36 @@ def get_agent_capabilities():
 def get_suggestions():
     """Génère des suggestions basées sur le contexte de l'utilisateur"""
     try:
-        user_id = int(get_jwt_identity())  # Convertir en int
+        # Get user identity with error handling
+        user_identity = get_jwt_identity()
+        if not user_identity:
+            return jsonify({'error': 'Token d\'authentification invalide'}), 401
+        
+        try:
+            user_id = int(user_identity)
+        except (ValueError, TypeError) as e:
+            return jsonify({'error': f'ID utilisateur invalide: {user_identity}'}), 400
+        
         data = request.json or {}
         
-        # Récupérer l'utilisateur
-        user = User.query.get(user_id)
+        # Récupérer l'utilisateur avec error handling
+        try:
+            user = User.query.get(user_id)
+        except Exception as db_error:
+            return jsonify({'error': f'Erreur de base de données: {str(db_error)}'}), 500
+        
         if not user:
             return jsonify({'error': 'Utilisateur non trouvé'}), 404
         
-        # Vérifier les credentials Sage
-        credentials = user.get_sage_credentials()
-        sage_connected = bool(credentials)
+        # Vérifier les credentials Sage avec error handling
+        sage_connected = False
+        try:
+            credentials = user.get_sage_credentials()
+            sage_connected = bool(credentials)
+        except Exception as cred_error:
+            # Log but don't fail - just assume not connected
+            print(f"Warning: Could not check Sage credentials for user {user_id}: {cred_error}")
+            sage_connected = False
         
         # Générer des suggestions basées sur le contexte
         suggestions = []
@@ -274,9 +293,14 @@ def get_suggestions():
                 "Analyser la performance financière de mon entreprise"
             ])
         
-        # Suggestions basées sur l'historique récent
-        recent_conversations = Conversation.query.filter_by(user_id=user_id)\
-            .order_by(Conversation.created_at.desc()).limit(3).all()
+        # Suggestions basées sur l'historique récent avec error handling
+        recent_conversations = []
+        try:
+            recent_conversations = Conversation.query.filter_by(user_id=user_id)\
+                .order_by(Conversation.created_at.desc()).limit(3).all()
+        except Exception as conv_error:
+            # Log but don't fail - just don't show conversation suggestions
+            print(f"Warning: Could not load recent conversations for user {user_id}: {conv_error}")
         
         if recent_conversations:
             suggestions.append("Continuer notre dernière conversation")
@@ -291,6 +315,10 @@ def get_suggestions():
         }), 200
         
     except Exception as e:
+        # More detailed error logging
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in get_suggestions: {error_details}")
         return jsonify({'error': f'Erreur lors de la génération des suggestions: {str(e)}'}), 500
 
 @ai_agent_bp.route('/agent/quick-actions', methods=['GET'])
