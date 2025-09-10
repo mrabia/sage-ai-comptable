@@ -41,7 +41,8 @@ const ChatInput = ({ onSendMessage, onFilesAttached, disabled = false }) => {
 
     const messageData = {
       text: message.trim(),
-      files: attachedFiles
+      files: attachedFiles,
+      attachedFiles: attachedFiles.map(f => f.file_id || f.id).filter(Boolean) // IDs pour le backend
     };
 
     // Réinitialiser l'input
@@ -67,8 +68,8 @@ const ChatInput = ({ onSendMessage, onFilesAttached, disabled = false }) => {
     setIsUploading(true);
 
     try {
-      // Valider et traiter les fichiers
-      const validFiles = [];
+      // Valider et uploader les fichiers vers le backend
+      const uploadedFiles = [];
       
       for (const file of files) {
         // Vérifier le type de fichier
@@ -83,22 +84,59 @@ const ChatInput = ({ onSendMessage, onFilesAttached, disabled = false }) => {
           continue;
         }
 
-        validFiles.push({
-          id: Date.now() + Math.random(),
-          file,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          preview: null
-        });
+        // Upload le fichier vers le backend
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          // Récupérer le token d'authentification
+          const token = localStorage.getItem('token');
+          if (!token) {
+            alert('Vous devez être connecté pour uploader des fichiers');
+            continue;
+          }
+
+          const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api'}/files/upload`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData
+          });
+
+          if (response.ok) {
+            const uploadResult = await response.json();
+            
+            uploadedFiles.push({
+              id: uploadResult.file_id,           // VRAI ID de la base de données
+              file_id: uploadResult.file_id,      // ID pour le backend
+              file,                               // Objet File original pour l'affichage
+              name: uploadResult.filename,
+              size: uploadResult.file_size,
+              type: uploadResult.file_type,
+              isProcessed: uploadResult.is_processed,
+              analysisStatus: uploadResult.is_processed ? 'success' : 'error',
+              processingError: uploadResult.processing_error,
+              analysisSummary: uploadResult.analysis_summary
+            });
+          } else {
+            const errorData = await response.json();
+            alert(`Erreur lors de l'upload de ${file.name}: ${errorData.error}`);
+            continue;
+          }
+        } catch (uploadError) {
+          console.error('Erreur lors de l\'upload:', uploadError);
+          alert(`Erreur lors de l'upload de ${file.name}`);
+          continue;
+        }
       }
 
-      if (validFiles.length > 0) {
-        setAttachedFiles(prev => [...prev, ...validFiles]);
+      if (uploadedFiles.length > 0) {
+        setAttachedFiles(prev => [...prev, ...uploadedFiles]);
         
-        // Notifier le parent si nécessaire
+        // Notifier le parent avec les vrais IDs
         if (onFilesAttached) {
-          onFilesAttached(validFiles);
+          onFilesAttached(uploadedFiles);
         }
       }
     } catch (error) {
@@ -109,8 +147,34 @@ const ChatInput = ({ onSendMessage, onFilesAttached, disabled = false }) => {
     }
   };
 
-  const removeFile = (fileId) => {
-    setAttachedFiles(prev => prev.filter(f => f.id !== fileId));
+  const removeFile = async (fileId) => {
+    try {
+      // Supprimer le fichier côté backend si c'est un vrai ID
+      const fileToRemove = attachedFiles.find(f => f.id === fileId);
+      if (fileToRemove && fileToRemove.file_id) {
+        const token = localStorage.getItem('token');
+        if (token) {
+          try {
+            await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api'}/files/${fileToRemove.file_id}`, {
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+          } catch (deleteError) {
+            console.warn('Erreur lors de la suppression backend:', deleteError);
+            // Continue avec la suppression frontend même si le backend échoue
+          }
+        }
+      }
+      
+      // Supprimer le fichier de l'état frontend
+      setAttachedFiles(prev => prev.filter(f => f.id !== fileId));
+    } catch (error) {
+      console.error('Erreur lors de la suppression:', error);
+      // Continuer avec la suppression frontend en cas d'erreur
+      setAttachedFiles(prev => prev.filter(f => f.id !== fileId));
+    }
   };
 
   const formatFileSize = (bytes) => {
@@ -139,20 +203,45 @@ const ChatInput = ({ onSendMessage, onFilesAttached, disabled = false }) => {
             {attachedFiles.map((fileData) => (
               <div
                 key={fileData.id}
-                className="flex items-center space-x-2 bg-gray-100 dark:bg-gray-700 rounded-lg px-3 py-2 text-sm"
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2 text-sm ${
+                  fileData.analysisStatus === 'success' 
+                    ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800' 
+                    : fileData.analysisStatus === 'error' 
+                    ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                    : 'bg-gray-100 dark:bg-gray-700'
+                }`}
               >
                 {getFileIcon(fileData.type)}
-                <span className="text-gray-900 dark:text-gray-100 truncate max-w-32">
-                  {fileData.name}
-                </span>
-                <span className="text-gray-500 dark:text-gray-400 text-xs">
-                  {formatFileSize(fileData.size)}
-                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-gray-900 dark:text-gray-100 truncate max-w-32">
+                    {fileData.name}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center space-x-2">
+                    <span>{formatFileSize(fileData.size)}</span>
+                    {fileData.isProcessed ? (
+                      <span className="text-green-600 dark:text-green-400 flex items-center">
+                        ✓ Analysé
+                        {fileData.analysisSummary?.potential_financial_data && (
+                          <span className="ml-1">💰</span>
+                        )}
+                      </span>
+                    ) : fileData.analysisStatus === 'error' ? (
+                      <span className="text-red-600 dark:text-red-400" title={fileData.processingError}>
+                        ⚠ Erreur
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 dark:text-gray-400">
+                        📊 En cours...
+                      </span>
+                    )}
+                  </div>
+                </div>
                 <button
                   onClick={() => removeFile(fileData.id)}
-                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 flex-shrink-0"
+                  title="Supprimer le fichier"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             ))}

@@ -71,93 +71,33 @@ const ChatPage = () => {
 
   const handleSendMessage = async (messageData) => {
     try {
-      // Si des fichiers sont attachés, les uploader d'abord
-      let uploadedFileIds = [];
-      let processedFiles = [];
+      // Les fichiers sont déjà uploadés par ChatInput, récupérer leurs IDs
+      const attachedFileIds = messageData.attachedFiles || [];
       
-      if (messageData.files && messageData.files.length > 0) {
-        // Marquer les fichiers comme en cours de traitement
-        const filesInProgress = messageData.files.map(fileData => ({
-          ...fileData,
-          id: Date.now() + Math.random(),
-          status: 'processing'
-        }));
-        
-        setUploadedFiles(prev => [...prev, ...filesInProgress]);
-
-        // Uploader et traiter chaque fichier
-        for (let i = 0; i < messageData.files.length; i++) {
-          const fileData = messageData.files[i];
-          const formData = new FormData();
-          formData.append('file', fileData.file);
-          
-          try {
-            const response = await fetch('/api/documents/upload', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-              },
-              body: formData
-            });
-            
-            if (response.ok) {
-              const result = await response.json();
-              uploadedFileIds.push(result.document_id);
-              
-              // Mettre à jour le statut du fichier
-              setUploadedFiles(prev => prev.map(f => 
-                f.id === filesInProgress[i].id 
-                  ? { 
-                      ...f, 
-                      status: 'completed',
-                      extractedData: result.extracted_data,
-                      document_id: result.document_id
-                    }
-                  : f
-              ));
-              
-              processedFiles.push({
-                ...filesInProgress[i],
-                document_id: result.document_id,
-                extractedData: result.extracted_data
-              });
-            } else {
-              // Marquer comme échoué
-              setUploadedFiles(prev => prev.map(f => 
-                f.id === filesInProgress[i].id 
-                  ? { ...f, status: 'failed' }
-                  : f
-              ));
-            }
-          } catch (error) {
-            console.error('Erreur upload fichier:', error);
-            setUploadedFiles(prev => prev.map(f => 
-              f.id === filesInProgress[i].id 
-                ? { ...f, status: 'failed' }
-                : f
-            ));
-          }
-        }
-      }
+      console.log('Envoi du message avec fichiers attachés:', attachedFileIds);
 
       // Construire le message avec les références aux fichiers
       let finalMessage = messageData.text;
-      if (uploadedFileIds.length > 0) {
-        finalMessage += `\n\n[Fichiers analysés: ${uploadedFileIds.join(', ')}]`;
+      if (attachedFileIds.length > 0) {
+        finalMessage += `\n\n[Fichiers analysés: ${attachedFileIds.join(', ')}]`;
         
-        // Ajouter un résumé des données extraites si disponible
-        if (processedFiles.length > 0) {
+        // Ajouter informations des fichiers si disponible
+        if (messageData.files && messageData.files.length > 0) {
           finalMessage += "\n\nDonnées extraites:";
-          processedFiles.forEach(file => {
-            if (file.extractedData) {
-              finalMessage += `\n- ${file.name}: ${JSON.stringify(file.extractedData, null, 2)}`;
+          messageData.files.forEach(file => {
+            finalMessage += `\n- ${file.name}`;
+            if (file.analysisSummary?.potential_financial_data) {
+              finalMessage += " (💰 Document financier détecté)";
+            }
+            if (file.isProcessed) {
+              finalMessage += " (✓ Analysé avec succès)";
             }
           });
         }
       }
 
-      // Envoyer le message
-      await sendMessage(finalMessage);
+      // Envoyer le message au ChatContext avec les IDs des fichiers
+      await sendMessage(finalMessage, null, attachedFileIds);
       
     } catch (error) {
       console.error('Erreur lors de l\'envoi du message:', error);

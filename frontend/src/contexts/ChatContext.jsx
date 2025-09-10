@@ -175,7 +175,7 @@ export function ChatProvider({ children }) {
     }
   }
 
-  const sendMessage = async (message, businessId = null) => {
+  const sendMessage = async (message, businessId = null, attachedFiles = []) => {
     if (!message.trim()) return
 
     setIsLoading(true)
@@ -202,7 +202,8 @@ export function ChatProvider({ children }) {
         body: JSON.stringify({
           message: message,
           conversation_id: currentConversation?.id,
-          business_id: businessId
+          business_id: businessId,
+          attached_files: attachedFiles
         })
       })
 
