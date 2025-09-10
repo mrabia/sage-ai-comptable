@@ -15,8 +15,8 @@ except ImportError:
                         setattr(self, key, value)
 from typing import Type, Dict, Any, Optional, List
 from pydantic import BaseModel, Field
-from services.sage_auth import SageOAuth2Service
-from services.sage_api import SageAPIService
+from src.services.sage_auth import SageOAuth2Service
+from src.services.sage_api import SageAPIService
 import json
 import os
 import time
